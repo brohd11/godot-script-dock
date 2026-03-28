@@ -16,25 +16,19 @@ const Pr = UString.PrintRich
 const EditorColors = UtilsRemote.EditorColors
 const UClassDetail = UtilsRemote.UClassDetail
 
+const EditorIcons = ALibEditor.Singletons.EditorIcons
+
+const RightClickHandler = ClickHandlers.RightClickHandler
+const Options = ALibRuntime.Popups.Options
+
 
 const MAIN_SCRIPT_LABEL = "Script.Main"
+const _CLASS = &"_class"
 const _CATEGORY = &"_category"
 const _TAGS = &"_tags"
 const _VIRTUAL = &"virtual"
 const _STATIC = &"static"
 const _OVERIDE = &"overide"
-
-var _main_margin:MarginContainer
-var _main_vbox:VBoxContainer
-
-var toolbar:HBoxContainer
-var dock_button:Button
-
-
-var outline_tree:OutlineTree
-var _tree_script_item_data:= {}
-
-var _updated:=false
 
 enum MemberType {
 	VAR,
@@ -47,30 +41,89 @@ enum MemberType {
 	SIGNAL,
 }
 
+enum SortMode {
+	NONE,
+	ALPHA,
+	METHOD_TYPE,
+	METHOD_TYPE_ALPHA,
+}
+
+
+var right_click_handler:RightClickHandler
+
+var _main_margin:MarginContainer
+var _main_vbox:VBoxContainer
+
+var toolbar:HBoxContainer
+var filter_line_edit:LineEdit
+var options_button:Button
+
+var dock_button:Button
+var dock_manager:DockManager
+
+var editor_script_list_vbox:VBoxContainer
+var editor_outline_vbox:VBoxContainer
+
+
+var outline_tree:OutlineTree
+var _tree_script_item_data:= {}
+
+var _current_script_path:String
+var _current_script_file_mod_time:int=-1
+
+
+var _updated:=false
+
+
+
 
 
 
 
 func _ready() -> void:
+	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
+	
 	ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
-	ScriptEditorRef.subscribe(ScriptEditorRef.Event.VALIDATE_SCRIPT, _on_validate)
+	ScriptEditorRef.subscribe(ScriptEditorRef.Event.TEXT_CHANGED, _on_editor_text_changed)
+	
+	EditorNodeRef.call_on_ready(_move_editor_nodes)
+	
+	right_click_handler = RightClickHandler.new()
+	add_child(right_click_handler)
 	
 	var editor_parser = EditorGDScriptParser.get_instance()
 	editor_parser.parse_completed.connect(_on_parse_completed, 1)
 	
+	size_flags_vertical = Control.SIZE_EXPAND_FILL
+	
 	_main_margin = ALibEditor.UIHelpers.Margin.new_plugin_margin_container()
 	add_child(_main_margin)
 	_main_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	#_main_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
 	_main_vbox = VBoxContainer.new()
 	_main_margin.add_child(_main_vbox)
 	
 	
+	
 	toolbar = HBoxContainer.new()
 	_main_vbox.add_child(toolbar)
 	
+	filter_line_edit = LineEdit.new()
+	toolbar.add_child(filter_line_edit)
+	filter_line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	filter_line_edit.placeholder_text = "Filter Members"
+	filter_line_edit.right_icon = EditorInterface.get_editor_theme().get_icon(&"Search", &"EditorIcons")
+	filter_line_edit.clear_button_enabled = true
+	filter_line_edit.text_changed.connect(_on_filter_text_changed)
+	
+	
+	options_button = PluginButton.new("TripleBar", _on_options_pressed).get_button()
+	toolbar.add_child(options_button)
+	
 	dock_button = PluginButton.new().get_button()
 	toolbar.add_child(dock_button)
+	dock_button.hide.call_deferred()
 	
 	
 	outline_tree = OutlineTree.new()
@@ -81,33 +134,140 @@ func _ready() -> void:
 	var current_parser = EditorGDScriptParser.get_parser()
 	if is_instance_valid(current_parser):
 		_on_editor_script_changed(current_parser.get_current_script())
-		outline_tree.build_tree.call_deferred()
+		_build_tree()
 
+func _move_editor_nodes():
+	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as Node
+	editor_script_list_vbox = side_bar_v.get_child(0)
+	editor_outline_vbox = side_bar_v.get_child(1)
 
+func _on_editor_text_changed():
+	_set_cache_dirty()
+
+func _set_cache_dirty():
+	outline_tree.cache_dirty = true
 
 func _on_editor_script_changed(script:GDScript):
 	if not is_instance_valid(script):
 		outline_tree.clear()
+		_current_script_path = ""
+		outline_tree.current_script_item_data = {}
 		return
 	
-	var script_path = script.resource_path
-	var current_script_data = _tree_script_item_data.get_or_add(script_path, {})
+	_set_cache_dirty()
+	_current_script_path = script.resource_path
+	if _current_script_path == "" or not _current_script_path.ends_with(".gd"):
+		outline_tree.clear()
+		return
+	
+	var current_script_data = _tree_script_item_data.get_or_add(_current_script_path, {})
 	outline_tree.current_script_item_data = current_script_data
 	
 	
 	# if new script build tree # this should be automatically called due to on parse_complete
 
-
+func _on_file_system_changed():
+	if not FileAccess.file_exists(_current_script_path):
+		return
+	var current_mod_time = FileAccess.get_modified_time(_current_script_path)
+	if current_mod_time != _current_script_file_mod_time:
+		_current_script_file_mod_time = current_mod_time
+		EditorGDScriptParser.queue_parse(true)
+		_set_cache_dirty() # set cache to dirty so it will rebuild tree
 
 func _on_validate():
-	#outline_tree.build_tree.call_deferred()
 	pass
 
 func _on_parse_completed(): # move this here, ensures the build is after the parsing
+	_build_tree()
+
+func _build_tree():
+	if _current_script_path == "" or not _current_script_path.ends_with(".gd"):
+		outline_tree.clear()
+		_set_cache_dirty()
+		return
 	outline_tree.build_tree.call_deferred()
 
+func _on_options_pressed():
+	var options = Options.new()
+	var in_docks = _is_in_docks()
+	
+	for mode in SortMode.keys():
+		var mode_num = SortMode[mode]
+		options.add_radio_option("Sort/" + mode, _set_sort_mode.bind(mode_num), outline_tree.sort_mode == mode_num, ["Sort", null])
+	
+	var move_message = "Move to ScriptEditor" if in_docks else "Move to Docks"
+	var move_icon = "Script" if in_docks else "EditorDock"
+	options.add_option(move_message, _move_to_from_sidebar.bind(in_docks), [move_icon])
+	
+	if in_docks:
+		options.add_option("DockManager", func():dock_button.pressed.emit(), ["MakeFloating"])
+	else:
+		var script_vis = editor_script_list_vbox.visible
+		options.add_option("Toggle Script List", _toggle_script_list.bind(not script_vis), [EditorIcons.get_visibility_icon(script_vis)])
+	
+	
+	right_click_handler.display_on_control(options, options_button)
 
 
+func _is_in_docks():
+	var parent = get_parent()
+	print(parent)
+	var par_class = parent.get_class()
+	if par_class == "EditorDock":
+		return true
+	var parent_parent = parent.get_parent()
+	if parent_parent is DockManager.PanelWindow:
+		return true
+	return false
+
+func _move_to_from_sidebar(to_sidebar:bool):
+	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as VSplitContainer
+	
+	var split_offsets = side_bar_v.split_offsets
+	if to_sidebar:
+		dock_manager.remove_control_from_parent()
+		side_bar_v.add_child(self)
+		side_bar_v.remove_child(editor_outline_vbox)
+	else:
+		side_bar_v.remove_child(self)
+		side_bar_v.add_child(editor_outline_vbox)
+		dock_manager.dock_instance(dock_manager.default_dock)
+		_toggle_script_list(true)
+		
+	_set_margins(to_sidebar)
+	
+	side_bar_v.split_offsets = split_offsets
+
+func _toggle_script_list(vis:bool):
+	editor_script_list_vbox.visible = vis
+	if not vis:
+		var line_edit = editor_script_list_vbox.get_child(0) as LineEdit
+		line_edit.clear()
+
+
+func _set_margins(sidebar:bool):
+	var val = -2
+	if sidebar:
+		val = 0
+	val *= EditorInterface.get_editor_scale()
+	ALibRuntime.NodeUtils.NUMarginContainer.set_margins(_main_margin, val)
+
+func clean_up():
+	_move_to_from_sidebar(false)
+
+
+func _set_sort_mode(mode:SortMode):
+	var rebuild = outline_tree.sort_mode != mode
+	outline_tree.sort_mode = mode
+	if rebuild:
+		_set_cache_dirty()
+		_build_tree()
+
+
+func _on_filter_text_changed(new_text:String):
+	outline_tree.current_filter_text = new_text.strip_edges()
+	outline_tree.filter_items()
 
 
 
@@ -133,12 +293,13 @@ class Nested extends NewScript2.InnerClass:
 		pass
 	
 	class Extend:
+		
+		static func test():
+			return "" == ""
 		func _enter_tree():
 			pass
 		func my_func():
 			pass
-		static func test():
-			return "" == ""
 	
 	class Another:
 		static func test():
@@ -149,7 +310,15 @@ class Nested extends NewScript2.InnerClass:
 
 class OutlineTree extends Tree:
 	
+	var cache_dirty:= true
+	
 	var current_script_item_data:= {}
+	
+	var last_filter_text:String = ""
+	var current_filter_text:String = ""
+	var is_filtering:bool=false
+	
+	var sort_mode:SortMode = SortMode.NONE
 	
 	func _ready() -> void:
 		item_mouse_selected.connect(_on_item_mouse_selected)
@@ -161,9 +330,13 @@ class OutlineTree extends Tree:
 	func build_tree():
 		MemberData.set_colors()
 		
+		if not cache_dirty:
+			return
+		
 		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("BUILD OUTLINE")
 		clear()
 		
+		var editor_theme = EditorInterface.get_editor_theme()
 		
 		var class_items = {}
 		#print("BUILDING")
@@ -174,6 +347,7 @@ class OutlineTree extends Tree:
 		var classes = gdscript_parser.get_classes()
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
+			var class_base_type = class_obj.script_base_type
 			
 			var item_parent:TreeItem
 			item_parent = class_items.get(access_path)
@@ -184,8 +358,11 @@ class OutlineTree extends Tree:
 				item_parent = create_item(class_items.get(last_access))
 				var _c_name = MemberData.get_main_script_name() if access_path == "" else UString.get_member_access_back(access_path)
 				item_parent.set_text(0, _c_name)
-				item_parent.set_icon(0, MemberData.get_icon(MemberType.CLASS))
-				var meta = {ParserKeys.ACCESS_PATH: last_access}
+				var icon_name = class_base_type
+				if icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, &"EditorIcons"):
+					icon_name = "Object"
+				item_parent.set_icon(0, editor_theme.get_icon(icon_name, &"EditorIcons"))
+				var meta = {ParserKeys.ACCESS_PATH: last_access, _CLASS:true}
 				item_parent.set_metadata(0, meta)
 				_set_collapsed(item_parent, access_path != "")
 				if access_path != "":
@@ -195,27 +372,51 @@ class OutlineTree extends Tree:
 			var const_parent = item_parent
 			var func_parent = item_parent
 			if true: # add a flag for categories?
-				prop_parent = create_item(item_parent)
-				prop_parent.set_text(0, "Properties")
-				prop_parent.set_icon(0, MemberData.get_icon(MemberType.VAR))
-				prop_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
-				_set_collapsed(prop_parent)
 				const_parent = create_item(item_parent)
 				const_parent.set_text(0, "Constants")
 				const_parent.set_icon(0, MemberData.get_icon(MemberType.CONST))
 				const_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
 				_set_collapsed(const_parent)
+				
+				prop_parent = create_item(item_parent)
+				prop_parent.set_text(0, "Properties")
+				prop_parent.set_icon(0, MemberData.get_icon(MemberType.VAR))
+				prop_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
+				_set_collapsed(prop_parent)
+				
 				func_parent = create_item(item_parent)
 				func_parent.set_text(0, "Methods")
 				func_parent.set_icon(0, MemberData.get_icon(MemberType.FUNC))
 				func_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
 				_set_collapsed(func_parent)
 			
-			var class_base_type = class_obj.script_base_type
 			
-			var sort_members = true # this should be set via ui
+			var const_names = class_obj.constants.keys()
+			const_names.sort_custom(sort_by_line_index.bind(class_obj.constants))
+			if sort_mode == SortMode.ALPHA or sort_mode == SortMode.METHOD_TYPE_ALPHA:
+				const_names.sort()
+			
+			for c in const_names:
+				var member_data = class_obj.constants.get(c)
+				if not member_data.get(ParserKeys.ACCESS_PATH).begins_with(access_path):
+					continue
+				var item = create_item(const_parent)
+				item.set_text(0, c)
+				
+				var type = class_obj.get_member_type(c)
+				var icon = MemberData.get_type_icon(type, gdscript_parser)
+				item.set_icon(0, icon)
+				
+				#item.set_icon(0, MemberData.get_icon(MemberType.CONST))
+				var meta = {ParserKeys.ACCESS_PATH: access_path}
+				item.set_metadata(0, meta)
+				_set_collapsed(item)
+			
+			
+			
 			var member_names = class_obj.members.keys()
-			if sort_members:
+			member_names.sort_custom(sort_by_line_index.bind(class_obj.members))
+			if sort_mode == SortMode.ALPHA or sort_mode == SortMode.METHOD_TYPE_ALPHA:
 				member_names.sort()
 			
 			for m in member_names:
@@ -237,46 +438,21 @@ class OutlineTree extends Tree:
 				item.set_metadata(0, meta)
 				_set_collapsed(item)
 			
-			var const_names = class_obj.constants.keys()
-			if sort_members:
-				const_names.sort()
-			
-			for c in const_names:
-				var member_data = class_obj.constants.get(c)
-				if not member_data.get(ParserKeys.ACCESS_PATH).begins_with(access_path):
-					continue
-				var item = create_item(const_parent)
-				item.set_text(0, c)
-				
-				var type = class_obj.get_member_type(c)
-				var icon = MemberData.get_type_icon(type, gdscript_parser)
-				item.set_icon(0, icon)
-				
-				#item.set_icon(0, MemberData.get_icon(MemberType.CONST))
-				var meta = {ParserKeys.ACCESS_PATH: access_path}
-				item.set_metadata(0, meta)
-				_set_collapsed(item)
 			
 			var virtual_methods = MemberData.get_virtual_methods_of_class(class_base_type)
 			var inherited_members = class_obj.get_inherited_members()
-			
+			var static_methods = {}
 			var func_names = class_obj.functions.keys()
-			if sort_members:
-				func_names.sort_custom(
-				func(a,b):
-					var a_vir = virtual_methods.has(a)
-					var b_vir = virtual_methods.has(b)
-					if a_vir and b_vir:
-						return a < b
-					elif a_vir:
-						return true
-					else:
-						return false
-					#elif b_vir: #^ 2 options, this commented out only sorts virtual
-						#return false #^ could also do alphabetical, or include overides
-					#else:
-						#return a < b
-				)
+			
+			func_names.sort_custom(sort_by_line_index.bind(class_obj.members))
+			if sort_mode == SortMode.ALPHA:
+				func_names.sort()
+			elif sort_mode != SortMode.NONE:
+				for f in func_names: # only need static methods if sorting
+					var func_obj = class_obj.get_function(f) as ParserFunc
+					if func_obj.is_static():
+						static_methods[f] = true
+				func_names = get_sorted_methods(func_names, virtual_methods, inherited_members, static_methods)
 			
 			for f in func_names:
 				var item = create_item(func_parent)
@@ -318,9 +494,49 @@ class OutlineTree extends Tree:
 				if func_parent.get_child_count() == 0:
 					func_parent.free()
 		
+		cache_dirty = false
+		filter_items()
 		t.stop()
 	
 	
+	func get_sorted_methods(methods: Array, virtual: Dictionary, inherited: Dictionary, statics: Dictionary) -> Array:
+		var arr_virtual = []
+		var arr_inherited = []
+		var arr_static = []
+		var arr_other = []
+		
+		# 1. Distribute into groups. 
+		# Because we iterate through the original array, the original order is perfectly preserved!
+		for m in methods:
+			if virtual.has(m):
+				arr_virtual.append(m)
+			elif inherited.has(m):
+				arr_inherited.append(m)
+			elif statics.has(m):
+				arr_static.append(m)
+			else:
+				arr_other.append(m)
+				
+		# 2. If in ALPHA mode, sort the individual groups alphabetically
+		if sort_mode == SortMode.METHOD_TYPE_ALPHA:
+			arr_virtual.sort()
+			arr_inherited.sort()
+			arr_static.sort()
+			arr_other.sort()
+			
+		# 3. Combine them back in the order of priority
+		var result = []
+		result.append_array(arr_virtual)
+		result.append_array(arr_inherited)
+		result.append_array(arr_static)
+		result.append_array(arr_other)
+		
+		return result
+	
+	func sort_by_line_index(a:String, b:String, dict:Dictionary):
+		var a_data = dict[a]
+		var b_data = dict[b]
+		return a_data.get(ParserKeys.LINE_INDEX) < b_data.get(ParserKeys.LINE_INDEX)
 	
 	
 	func _on_item_mouse_selected(mouse_pos:Vector2, btn_idx:int):
@@ -353,11 +569,56 @@ class OutlineTree extends Tree:
 			
 			
 	
+	func filter_items():
+		is_filtering = current_filter_text != ""
+		if current_filter_text == "" and last_filter_text == "":
+			return
+		last_filter_text = current_filter_text
+		var item = get_root()
+		if current_filter_text == "":
+			while is_instance_valid(item):
+				item.visible = true
+				var meta = item.get_metadata(0)
+				if meta != null:
+					_set_collapsed(item)
+				item = item.get_next_in_tree()
+			
+			return
+		
+		var class_items = []
+		var cat_items = []
+		while is_instance_valid(item):
+			var meta = item.get_metadata(0)
+			if meta == null:
+				pass
+			elif meta.get(_CLASS) == true:
+				class_items.append(item)
+			elif meta.get(_CATEGORY) == true:
+				cat_items.append(item)
+			else:
+				var text = item.get_text(0)
+				item.visible = current_filter_text.is_subsequence_ofn(text)
+			
+			item = item.get_next_in_tree()
+		
+		for cat_item in cat_items:
+			cat_item.visible = false
+			for c in cat_item.get_children():
+				if c.visible:
+					cat_item.collapsed = false
+					cat_item.visible = true
+					break
+		
+		for class_item in class_items:
+			class_item.visible = false
+			for c in class_item.get_children():
+				if c.visible:
+					class_item.collapsed = false
+					class_item.visible = true
+					break
 	
 	
-	
-	
-	func _make_custom_tooltip(for_text: String) -> Object:
+	func _make_custom_tooltip(_for_text: String) -> Object:
 		var item = get_item_at_position(get_local_mouse_position())
 		if not is_instance_valid(item):
 			return
@@ -524,11 +785,12 @@ class OutlineTree extends Tree:
 		item.collapsed = access_path_data.get(_name, default)
 	
 	func _on_item_collapsed(item:TreeItem):
+		if is_filtering:
+			return
 		var access_path = get_item_access_path(item)
 		var _name = get_item_member_name(item)
 		var access_path_data = current_script_item_data.get_or_add(access_path, {})
 		access_path_data[_name] = item.collapsed
-	
 
 
 class MemberData:
@@ -552,6 +814,8 @@ class MemberData:
 		function_def_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.FUNCTION_DEFINITION)
 		symbol_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.SYMBOL)
 	
+	static func is_a_gdscript_file(file_path:String):
+		return GDScriptParser.Utils.is_gdscript_path(file_path)
 	
 	static func get_type_icon(type:String, gdscript_parser:GDScriptParser, is_instance:=false) -> Texture2D:
 		var editor_theme = EditorInterface.get_editor_theme()
@@ -560,8 +824,14 @@ class MemberData:
 		elif type == &"void":
 			return editor_theme.get_icon(&"Nil", &"EditorIcons")
 		elif type.begins_with("res://"):
-			if type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
+			if not is_a_gdscript_file(type):
+				var ext = type.get_extension()
+				match ext:
+					"tscn": return editor_theme.get_icon(&"PackedScene", &"EditorIcons")
+				return editor_theme.get_icon(&"Variant", &"EditorIcons")
+			elif type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
 				return editor_theme.get_icon(&"Enum", &"EditorIcons")
+				
 			else:
 				var parser_data = gdscript_parser.get_parser_and_class_obj_for_script(type)
 				var class_obj = parser_data.get(ParserKeys.GET_CLASS_OBJ) as ParserClass
@@ -659,5 +929,4 @@ class MemberData:
 		#print("::",script_base_type,"::")
 		pr.new_line().append("Base Type: ").append(script_base_type, base_type_color)
 		return pr
-	
 	
