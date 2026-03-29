@@ -302,6 +302,7 @@ class Nested extends NewScript2.InnerClass:
 			pass
 	
 	class Another:
+		extends Node
 		static func test():
 			var n = Nested.new()
 			return n
@@ -441,6 +442,7 @@ class OutlineTree extends Tree:
 			
 			var virtual_methods = MemberData.get_virtual_methods_of_class(class_base_type)
 			var inherited_members = class_obj.get_inherited_members()
+			print("INH MEMBERS::FOR CLASS::", class_obj.get_name(),"::", inherited_members.keys())
 			var static_methods = {}
 			var func_names = class_obj.functions.keys()
 			
@@ -696,7 +698,8 @@ class OutlineTree extends Tree:
 						type = "Nil"
 					if type != "Nil":
 						type = gdscript_parser.resolve_expression(type, member_data.declaration_line)
-					if type.begins_with("res://"):
+					#if type.begins_with("res://"):
+					if type.is_absolute_path():
 						type = MemberData.trim_file_path(type, gdscript_parser)
 					pr.append(type, MemberData.base_type_color)
 					#if i < arg_names.size() - 1:
@@ -704,7 +707,8 @@ class OutlineTree extends Tree:
 			
 			
 			pr.new_line().append("Return: ")
-			if ret_type.begins_with("res://"):
+			#if ret_type.begins_with("res://"):
+			if ret_type.is_absolute_path():
 				ret_type = MemberData.trim_file_path(ret_type, gdscript_parser)
 			pr.append(ret_type, MemberData.base_type_color)
 			
@@ -712,7 +716,8 @@ class OutlineTree extends Tree:
 			pr.append(member_type, MemberData.keyword_color).append(" " + member_name, MemberData.member_var_color)
 			pr.append(": ", MemberData.symbol_color)
 			var type = class_obj.get_member_type(member_name)
-			if not type.begins_with("res://"):
+			#if not type.begins_with("res://"):
+			if not type.is_absolute_path():
 				pr.append(type, MemberData.base_type_color)
 			else:
 				var script_data = UString.get_script_path_and_suffix(type)
@@ -823,7 +828,8 @@ class MemberData:
 			return editor_theme.get_icon(&"Nil", &"EditorIcons")
 		elif type == &"void":
 			return editor_theme.get_icon(&"Nil", &"EditorIcons")
-		elif type.begins_with("res://"):
+		#elif type.begins_with("res://"):
+		elif type.is_absolute_path():
 			if not is_a_gdscript_file(type):
 				var ext = type.get_extension()
 				match ext:
@@ -871,25 +877,67 @@ class MemberData:
 			return gdscript_parser.get_global_class_name()
 		return gdscript_parser.get_script_path().get_file()
 	
-	
-	static func trim_file_path(path:String, parser:GDScriptParser):
+	static func trim_file_path(path: String, parser: GDScriptParser) -> String:
 		var main_script_path = parser.get_script_path()
+		
+		# 1. Handle SubNodes/Inner Classes of the current script
 		if path.begins_with(main_script_path):
 			var access_path = path.trim_prefix(main_script_path).trim_prefix(".")
 			if access_path != "":
 				return access_path
-		var trimmed = path.trim_prefix("res://")
+
+		# 2. Dynamically extract the prefix (res://, user://, C:/, etc.)
+		var prefix = ""
+		var trimmed = path
+		
+		if path.find("://") != -1: 
+			# Handles "res://" and "user://"
+			var split_idx = path.find("://") + 3
+			prefix = path.substr(0, split_idx)
+			trimmed = path.substr(split_idx)
+		elif path.find(":/") != -1: 
+			# Handles Windows OS paths like "C:/"
+			var split_idx = path.find(":/") + 2
+			prefix = path.substr(0, split_idx)
+			trimmed = path.substr(split_idx)
+		elif path.begins_with("/"): 
+			# Handles Linux/Mac OS paths like "/var/home/"
+			prefix = "/"
+			trimmed = path.substr(1)
+		else:
+			# Fallback: if it has no recognizable root, just use it as-is
+			pass 
+
+		# 3. Perform the trimming logic on the clean inner directories
 		var slice_count = trimmed.get_slice_count("/")
 		if slice_count < 3:
 			return path
-		var res_dir = trimmed.get_slice("/", 0)
+			
+		var first_dir = trimmed.get_slice("/", 0)
 		var file_name = trimmed.get_file()
 		
-		return "res://" + res_dir.path_join("...").path_join(file_name)
+		# 4. Reconstruct the path dynamically
+		return prefix + first_dir.path_join("...").path_join(file_name)
+	
+	#static func trim_file_path(path:String, parser:GDScriptParser):
+		#var main_script_path = parser.get_script_path()
+		#if path.begins_with(main_script_path):
+			#var access_path = path.trim_prefix(main_script_path).trim_prefix(".")
+			#if access_path != "":
+				#return access_path
+		#var trimmed = path.trim_prefix("res://")
+		#
+		#var slice_count = trimmed.get_slice_count("/")
+		#if slice_count < 3:
+			#return path
+		#var res_dir = trimmed.get_slice("/", 0)
+		#var file_name = trimmed.get_file()
+		#
+		#return "res://" + res_dir.path_join("...").path_join(file_name)
 	
 	
 	static func get_virtual_methods_of_class(class_type:String):
-		var virtual_methods = {}
+		var virtual_methods:= {}
 		for method_data in ClassDB.class_get_method_list(class_type):
 			if method_data.flags && METHOD_FLAG_VIRTUAL:
 				virtual_methods[method_data.name] = true
