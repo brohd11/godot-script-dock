@@ -9,7 +9,7 @@ const Outline = preload("res://addons/script_outline/src/outline.gd")
 
 var outline:Outline
 
-var dock_manager:DockManager
+var dm_instance_manager:DockManager.InstanceManager
 
 
 
@@ -29,9 +29,10 @@ func _enter_tree() -> void:
 	EditorGDScriptParser.register_node(self)
 	
 	outline = Outline.new()
-	dock_manager = DockManager.new(self, outline, DockManager.Slot.DOCK_SLOT_LEFT_UR)
-	dock_manager.can_be_freed = true
-	dock_manager.allow_scene_reload = true
+	
+	dm_instance_manager = DockManager.InstanceManager.new(self, false, true)
+	var dm = dm_instance_manager.new_persistent_dock_manager(outline, DockManager.Slot.DOCK_SLOT_LEFT_UR)
+	dm.allow_scene_reload = true
 
 
 func _exit_tree() -> void:
@@ -40,7 +41,7 @@ func _exit_tree() -> void:
 	if is_instance_valid(outline):
 		outline.clean_up()
 	
-	if is_instance_valid(dock_manager):
-		dock_manager.clean_up()
+	if is_instance_valid(dm_instance_manager):
+		dm_instance_manager.clean_up()
 	
 	

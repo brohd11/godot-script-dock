@@ -1,4 +1,4 @@
-extends Control
+extends VBoxContainer
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
@@ -21,6 +21,18 @@ const EditorIcons = ALibEditor.Singletons.EditorIcons
 const RightClickHandler = ClickHandlers.RightClickHandler
 const Options = ALibRuntime.Popups.Options
 
+## script tree
+const ScriptTree = preload("res://addons/script_outline/src/script_tree.gd")
+var script_tree:ScriptTree
+
+const FileSystemTab = preload("res://addons/addon_lib/brohd/alib_editor/file_system/components/filesystem_tab.gd")
+var tab:FileSystemTab
+
+const ScriptContainer = preload("res://addons/script_outline/src/script_container.gd")
+var script_container:ScriptContainer
+## //
+
+const _ED_ICONS = &"EditorIcons"
 
 const MAIN_SCRIPT_LABEL = "Script.Main"
 const _CLASS = &"_class"
@@ -48,6 +60,8 @@ enum SortMode {
 	METHOD_TYPE_ALPHA,
 }
 
+var _dock_data:Dictionary
+var _in_script_editor_sidebar:bool = false
 
 var right_click_handler:RightClickHandler
 
@@ -75,15 +89,24 @@ var _current_script_file_mod_time:int=-1
 var _updated:=false
 
 
+func get_dock_data() -> Dictionary:
+	var data = {}
+	data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
+	return data
 
-
-
+func set_dock_data(data:Dictionary) -> void:
+	print("SETTING::", data)
+	_dock_data = data
+	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR)
 
 
 func _ready() -> void:
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
 	
-	ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
+	
+	
+	
+	#ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
 	ScriptEditorRef.subscribe(ScriptEditorRef.Event.TEXT_CHANGED, _on_editor_text_changed)
 	
 	EditorNodeRef.call_on_ready(_move_editor_nodes)
@@ -92,19 +115,34 @@ func _ready() -> void:
 	add_child(right_click_handler)
 	
 	var editor_parser = EditorGDScriptParser.get_instance()
+	editor_parser.editor_script_changed.connect(_on_editor_script_changed, 1)
 	editor_parser.parse_completed.connect(_on_parse_completed, 1)
 	
+	# build nodes
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
 	_main_margin = ALibEditor.UIHelpers.Margin.new_plugin_margin_container()
 	add_child(_main_margin)
-	_main_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	#_main_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	#_main_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_main_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
 	_main_vbox = VBoxContainer.new()
 	_main_margin.add_child(_main_vbox)
 	
+	# script tree
+	script_container = ScriptContainer.new()
+	_main_vbox.add_child(script_container)
+	script_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
+	#script_tree = ScriptTree.new()
+	#_main_vbox.add_child(script_tree)
+	#script_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	
+	#tab = FileSystemTab.new()
+	#_main_vbox.add_child(tab)
+	#tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	
+	# //
 	
 	toolbar = HBoxContainer.new()
 	_main_vbox.add_child(toolbar)
@@ -113,10 +151,9 @@ func _ready() -> void:
 	toolbar.add_child(filter_line_edit)
 	filter_line_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	filter_line_edit.placeholder_text = "Filter Members"
-	filter_line_edit.right_icon = EditorInterface.get_editor_theme().get_icon(&"Search", &"EditorIcons")
+	filter_line_edit.right_icon = EditorInterface.get_editor_theme().get_icon(&"Search", _ED_ICONS)
 	filter_line_edit.clear_button_enabled = true
 	filter_line_edit.text_changed.connect(_on_filter_text_changed)
-	
 	
 	options_button = PluginButton.new("TripleBar", _on_options_pressed).get_button()
 	toolbar.add_child(options_button)
@@ -125,27 +162,34 @@ func _ready() -> void:
 	toolbar.add_child(dock_button)
 	dock_button.hide.call_deferred()
 	
-	
 	outline_tree = OutlineTree.new()
 	_main_vbox.add_child(outline_tree)
 	outline_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outline_tree.hide_root = true
+	
 	
 	var current_parser = EditorGDScriptParser.get_parser()
 	if is_instance_valid(current_parser):
 		_on_editor_script_changed(current_parser.get_current_script())
 		_build_tree()
 
+
 func _move_editor_nodes():
 	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as Node
 	editor_script_list_vbox = side_bar_v.get_child(0)
 	editor_outline_vbox = side_bar_v.get_child(1)
+	
+	if _in_script_editor_sidebar:
+		print("MOVING")
+		_move_to_from_sidebar(true)
+
 
 func _on_editor_text_changed():
 	_set_cache_dirty()
 
 func _set_cache_dirty():
 	outline_tree.cache_dirty = true
+
 
 func _on_editor_script_changed(script:GDScript):
 	if not is_instance_valid(script):
@@ -162,9 +206,7 @@ func _on_editor_script_changed(script:GDScript):
 	
 	var current_script_data = _tree_script_item_data.get_or_add(_current_script_path, {})
 	outline_tree.current_script_item_data = current_script_data
-	
-	
-	# if new script build tree # this should be automatically called due to on parse_complete
+
 
 func _on_file_system_changed():
 	if not FileAccess.file_exists(_current_script_path):
@@ -175,10 +217,9 @@ func _on_file_system_changed():
 		EditorGDScriptParser.queue_parse(true)
 		_set_cache_dirty() # set cache to dirty so it will rebuild tree
 
-func _on_validate():
-	pass
 
 func _on_parse_completed(): # move this here, ensures the build is after the parsing
+	print("ON PARSE COMPLETE")
 	_build_tree()
 
 func _build_tree():
@@ -186,7 +227,9 @@ func _build_tree():
 		outline_tree.clear()
 		_set_cache_dirty()
 		return
+	#print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
 	outline_tree.build_tree.call_deferred()
+
 
 func _on_options_pressed():
 	var options = Options.new()
@@ -206,13 +249,10 @@ func _on_options_pressed():
 		var script_vis = editor_script_list_vbox.visible
 		options.add_option("Toggle Script List", _toggle_script_list.bind(not script_vis), [EditorIcons.get_visibility_icon(script_vis)])
 	
-	
 	right_click_handler.display_on_control(options, options_button)
-
 
 func _is_in_docks():
 	var parent = get_parent()
-	print(parent)
 	var par_class = parent.get_class()
 	if par_class == "EditorDock":
 		return true
@@ -221,9 +261,8 @@ func _is_in_docks():
 		return true
 	return false
 
-func _move_to_from_sidebar(to_sidebar:bool):
+func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
 	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as VSplitContainer
-	
 	var split_offsets = side_bar_v.split_offsets
 	if to_sidebar:
 		dock_manager.remove_control_from_parent()
@@ -234,9 +273,11 @@ func _move_to_from_sidebar(to_sidebar:bool):
 		side_bar_v.add_child(editor_outline_vbox)
 		dock_manager.dock_instance(dock_manager.default_dock)
 		_toggle_script_list(true)
-		
-	_set_margins(to_sidebar)
 	
+	if set_status:
+		_in_script_editor_sidebar = to_sidebar
+	
+	_set_margins(to_sidebar)
 	side_bar_v.split_offsets = split_offsets
 
 func _toggle_script_list(vis:bool):
@@ -244,7 +285,6 @@ func _toggle_script_list(vis:bool):
 	if not vis:
 		var line_edit = editor_script_list_vbox.get_child(0) as LineEdit
 		line_edit.clear()
-
 
 func _set_margins(sidebar:bool):
 	var val = -2
@@ -254,7 +294,7 @@ func _set_margins(sidebar:bool):
 	ALibRuntime.NodeUtils.NUMarginContainer.set_margins(_main_margin, val)
 
 func clean_up():
-	_move_to_from_sidebar(false)
+	_move_to_from_sidebar(false, false)
 
 
 func _set_sort_mode(mode:SortMode):
@@ -264,60 +304,18 @@ func _set_sort_mode(mode:SortMode):
 		_set_cache_dirty()
 		_build_tree()
 
-
 func _on_filter_text_changed(new_text:String):
 	outline_tree.current_filter_text = new_text.strip_edges()
 	outline_tree.filter_items()
 
 
-
-class Nested extends NewScript2.InnerClass:
-	pass
-	
-	const ParserKeys = true
-	
-	static func test():
-		return "" == ""
-	
-	class Nested:
-		extends Node
-		
-		const ParserKeys = ""
-		
-		func _enter_tree() -> void:
-			pass
-		func my_func():
-			
-			
-			return ParserKeys
-		pass
-	
-	class Extend:
-		
-		static func test():
-			return "" == ""
-		func _enter_tree():
-			pass
-		func my_func():
-			pass
-	
-	class Another:
-		extends Node
-		static func test():
-			var n = Nested.new()
-			return n
-			
-	
-
 class OutlineTree extends Tree:
-	
-	var cache_dirty:= true
-	
+	var cache_dirty:bool = true
 	var current_script_item_data:= {}
 	
 	var last_filter_text:String = ""
 	var current_filter_text:String = ""
-	var is_filtering:bool=false
+	var is_filtering:bool = false
 	
 	var sort_mode:SortMode = SortMode.NONE
 	
@@ -335,16 +333,15 @@ class OutlineTree extends Tree:
 			return
 		
 		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("BUILD OUTLINE")
-		clear()
-		
 		var editor_theme = EditorInterface.get_editor_theme()
 		
+		clear()
 		var class_items = {}
-		#print("BUILDING")
-		
 		var _root = create_item()
-		
 		var gdscript_parser = EditorGDScriptParser.get_parser()
+		print(gdscript_parser)
+		print(gdscript_parser._script_path)
+		print(gdscript_parser.get_classes())
 		var classes = gdscript_parser.get_classes()
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
@@ -360,9 +357,9 @@ class OutlineTree extends Tree:
 				var _c_name = MemberData.get_main_script_name() if access_path == "" else UString.get_member_access_back(access_path)
 				item_parent.set_text(0, _c_name)
 				var icon_name = class_base_type
-				if icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, &"EditorIcons"):
+				if not editor_theme.has_icon(icon_name, _ED_ICONS): # icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, _ED_ICONS):
 					icon_name = "Object"
-				item_parent.set_icon(0, editor_theme.get_icon(icon_name, &"EditorIcons"))
+				item_parent.set_icon(0, editor_theme.get_icon(icon_name, _ED_ICONS))
 				var meta = {ParserKeys.ACCESS_PATH: last_access, _CLASS:true}
 				item_parent.set_metadata(0, meta)
 				_set_collapsed(item_parent, access_path != "")
@@ -442,7 +439,7 @@ class OutlineTree extends Tree:
 			
 			var virtual_methods = MemberData.get_virtual_methods_of_class(class_base_type)
 			var inherited_members = class_obj.get_inherited_members()
-			print("INH MEMBERS::FOR CLASS::", class_obj.get_name(),"::", inherited_members.keys())
+			#print("INH MEMBERS::FOR CLASS::", class_obj.get_name(),"::", inherited_members.keys())
 			var static_methods = {}
 			var func_names = class_obj.functions.keys()
 			
@@ -458,32 +455,28 @@ class OutlineTree extends Tree:
 			
 			for f in func_names:
 				var item = create_item(func_parent)
-				
 				var func_obj = class_obj.get_function(f) as ParserFunc
 				
-				var item_text = f
 				var item_tags = []
 				if func_obj.is_static():
 					item_tags.append(_STATIC)
-				
 				var virtual = virtual_methods.has(f)
 				if virtual:
-					item.set_custom_color(0, MemberData.function_def_color)
 					item_tags.append(_VIRTUAL)
+					item.set_custom_color(0, MemberData.function_def_color)
 				if inherited_members.has(f):
+					item_tags.append(_OVERIDE)
 					if not virtual:
 						item.set_custom_color(0, MemberData.member_var_color)
-					item_tags.append(_OVERIDE)
 				
 				#item.set_icon(0, MemberData.get_icon(MemberType.FUNC))
 				var type = func_obj.get_return_type()
 				var icon = MemberData.get_type_icon(type, gdscript_parser)
 				item.set_icon(0, icon)
-				item.set_text(0, item_text)
+				item.set_text(0, f)
 				if not item_tags.is_empty():
 					item.set_suffix(0, "[%s]" % ", ".join(item_tags))
 				
-				print("TAGS IN::", item_tags)
 				var meta = {ParserKeys.ACCESS_PATH: access_path, _TAGS: item_tags}
 				item.set_metadata(0, meta)
 				_set_collapsed(item)
@@ -507,8 +500,6 @@ class OutlineTree extends Tree:
 		var arr_static = []
 		var arr_other = []
 		
-		# 1. Distribute into groups. 
-		# Because we iterate through the original array, the original order is perfectly preserved!
 		for m in methods:
 			if virtual.has(m):
 				arr_virtual.append(m)
@@ -518,21 +509,18 @@ class OutlineTree extends Tree:
 				arr_static.append(m)
 			else:
 				arr_other.append(m)
-				
-		# 2. If in ALPHA mode, sort the individual groups alphabetically
+		
 		if sort_mode == SortMode.METHOD_TYPE_ALPHA:
 			arr_virtual.sort()
 			arr_inherited.sort()
 			arr_static.sort()
 			arr_other.sort()
-			
-		# 3. Combine them back in the order of priority
+		
 		var result = []
 		result.append_array(arr_virtual)
 		result.append_array(arr_inherited)
 		result.append_array(arr_static)
 		result.append_array(arr_other)
-		
 		return result
 	
 	func sort_by_line_index(a:String, b:String, dict:Dictionary):
@@ -557,9 +545,7 @@ class OutlineTree extends Tree:
 		if not is_instance_valid(class_obj):
 			return
 		
-		
 		var member_data = class_obj.get_member_data(member_name)
-		
 		if btn_idx == MOUSE_BUTTON_LEFT:
 			var line_index = member_data.get(ParserKeys.LINE_INDEX)
 			var code_edit = ScriptEditorRef.get_current_code_edit()
@@ -568,8 +554,7 @@ class OutlineTree extends Tree:
 				code_edit.set_line_as_first_visible(line_index)
 			else:
 				code_edit.set_line_as_center_visible(line_index)
-			
-			
+	
 	
 	func filter_items():
 		is_filtering = current_filter_text != ""
@@ -584,7 +569,6 @@ class OutlineTree extends Tree:
 				if meta != null:
 					_set_collapsed(item)
 				item = item.get_next_in_tree()
-			
 			return
 		
 		var class_items = []
@@ -626,7 +610,9 @@ class OutlineTree extends Tree:
 			return
 		if not valid_member_item(item):
 			return
+		
 		MemberData.set_colors()
+		
 		var meta = item.get_metadata(0)
 		
 		var panel = PanelContainer.new()
@@ -663,7 +649,6 @@ class OutlineTree extends Tree:
 			label.custom_minimum_size = _get_panel_size(pr, label)
 			return panel
 		
-		
 		if member_data is ParserFunc:
 			var tags = meta.get(_TAGS, "")
 			if not tags.is_empty():
@@ -698,8 +683,8 @@ class OutlineTree extends Tree:
 						type = "Nil"
 					if type != "Nil":
 						type = gdscript_parser.resolve_expression(type, member_data.declaration_line)
-					#if type.begins_with("res://"):
-					if type.is_absolute_path():
+					
+					if type.is_absolute_path(): # this will work on "strings", but strings should be resovled by now
 						type = MemberData.trim_file_path(type, gdscript_parser)
 					pr.append(type, MemberData.base_type_color)
 					#if i < arg_names.size() - 1:
@@ -823,38 +808,41 @@ class MemberData:
 		return GDScriptParser.Utils.is_gdscript_path(file_path)
 	
 	static func get_type_icon(type:String, gdscript_parser:GDScriptParser, is_instance:=false) -> Texture2D:
+		#print("GET ICON::", type)
 		var editor_theme = EditorInterface.get_editor_theme()
 		if type.is_empty():
-			return editor_theme.get_icon(&"Nil", &"EditorIcons")
+			return editor_theme.get_icon(&"Nil", _ED_ICONS)
 		elif type == &"void":
-			return editor_theme.get_icon(&"Nil", &"EditorIcons")
+			return editor_theme.get_icon(&"Nil", _ED_ICONS)
 		#elif type.begins_with("res://"):
 		elif type.is_absolute_path():
 			if not is_a_gdscript_file(type):
 				var ext = type.get_extension()
 				match ext:
-					"tscn": return editor_theme.get_icon(&"PackedScene", &"EditorIcons")
-				return editor_theme.get_icon(&"Variant", &"EditorIcons")
+					"tscn": return editor_theme.get_icon(&"PackedScene", _ED_ICONS)
+				return editor_theme.get_icon(&"Variant", _ED_ICONS)
 			elif type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
-				return editor_theme.get_icon(&"Enum", &"EditorIcons")
+				return editor_theme.get_icon(&"Enum", _ED_ICONS)
 				
 			else:
+				#print("ERROR TYPE::", type)
 				var parser_data = gdscript_parser.get_parser_and_class_obj_for_script(type)
 				var class_obj = parser_data.get(ParserKeys.GET_CLASS_OBJ) as ParserClass
+				var base = class_obj.script_base_type
 				var icon_name:StringName
 				if is_instance:
-					icon_name = class_obj.script_base_type if class_obj.script_base_type != &"RefCounted" else &"Object"
+					icon_name = base if editor_theme.has_icon(base, _ED_ICONS) else &"Object"
 				else:
 					if class_obj.access_path == "":
 						icon_name = &"GDScript"
 					else:
 						icon_name = &"GDScriptInternal"
-				return editor_theme.get_icon(icon_name, &"EditorIcons")
+				return editor_theme.get_icon(icon_name, _ED_ICONS)
 		else:
-			if editor_theme.has_icon(type, &"EditorIcons"):
-				return editor_theme.get_icon(type, &"EditorIcons")
+			if editor_theme.has_icon(type, _ED_ICONS):
+				return editor_theme.get_icon(type, _ED_ICONS)
 			else:
-				return editor_theme.get_icon(&"Variant", &"EditorIcons")
+				return editor_theme.get_icon(&"Variant", _ED_ICONS)
 	
 	static func get_icon(member_type:MemberType):
 		var icon_name:String
@@ -868,7 +856,7 @@ class MemberData:
 			MemberType.CLASS: icon_name = &"Object"
 			MemberType.SIGNAL: icon_name = &"MemberSignal"
 		
-		return EditorInterface.get_editor_theme().get_icon(icon_name, &"EditorIcons")
+		return EditorInterface.get_editor_theme().get_icon(icon_name, _ED_ICONS)
 	
 	
 	static func get_main_script_name():
@@ -879,61 +867,33 @@ class MemberData:
 	
 	static func trim_file_path(path: String, parser: GDScriptParser) -> String:
 		var main_script_path = parser.get_script_path()
-		
-		# 1. Handle SubNodes/Inner Classes of the current script
 		if path.begins_with(main_script_path):
 			var access_path = path.trim_prefix(main_script_path).trim_prefix(".")
 			if access_path != "":
 				return access_path
-
-		# 2. Dynamically extract the prefix (res://, user://, C:/, etc.)
+		
 		var prefix = ""
 		var trimmed = path
-		
-		if path.find("://") != -1: 
-			# Handles "res://" and "user://"
+		if path.find("://") != -1: # GD
 			var split_idx = path.find("://") + 3
 			prefix = path.substr(0, split_idx)
 			trimmed = path.substr(split_idx)
-		elif path.find(":/") != -1: 
-			# Handles Windows OS paths like "C:/"
+		elif path.find(":/") != -1: # Windoze
 			var split_idx = path.find(":/") + 2
 			prefix = path.substr(0, split_idx)
 			trimmed = path.substr(split_idx)
-		elif path.begins_with("/"): 
-			# Handles Linux/Mac OS paths like "/var/home/"
+		elif path.begins_with("/"): # Linux/MacOS
 			prefix = "/"
 			trimmed = path.substr(1)
-		else:
-			# Fallback: if it has no recognizable root, just use it as-is
+		else: # no recognizable root
 			pass 
-
-		# 3. Perform the trimming logic on the clean inner directories
+		
 		var slice_count = trimmed.get_slice_count("/")
 		if slice_count < 3:
 			return path
-			
 		var first_dir = trimmed.get_slice("/", 0)
 		var file_name = trimmed.get_file()
-		
-		# 4. Reconstruct the path dynamically
 		return prefix + first_dir.path_join("...").path_join(file_name)
-	
-	#static func trim_file_path(path:String, parser:GDScriptParser):
-		#var main_script_path = parser.get_script_path()
-		#if path.begins_with(main_script_path):
-			#var access_path = path.trim_prefix(main_script_path).trim_prefix(".")
-			#if access_path != "":
-				#return access_path
-		#var trimmed = path.trim_prefix("res://")
-		#
-		#var slice_count = trimmed.get_slice_count("/")
-		#if slice_count < 3:
-			#return path
-		#var res_dir = trimmed.get_slice("/", 0)
-		#var file_name = trimmed.get_file()
-		#
-		#return "res://" + res_dir.path_join("...").path_join(file_name)
 	
 	
 	static func get_virtual_methods_of_class(class_type:String):
@@ -945,14 +905,12 @@ class MemberData:
 	
 	
 	static func get_class_data(gdscript_parser:GDScriptParser, class_obj:ParserClass, pr:Pr):
-		if class_obj.access_path == "":
-			var global_name = gdscript_parser.get_global_class_name()
-			if global_name != "":
-				pr.append("class_name ", keyword_color).append(global_name, user_type_color)
-			else:
-				pr.append("script ", keyword_color).append(trim_file_path(class_obj.main_script_path, gdscript_parser), global_function_color)
-		else:
+		if class_obj.access_path != "": # inner classes
 			pr.append("class ", keyword_color).append(class_obj.access_path, base_type_color)
+		elif gdscript_parser.get_global_class_name() != "": # main script is global
+			pr.append("class_name ", keyword_color).append(gdscript_parser.get_global_class_name(), user_type_color)
+		else: # non global
+			pr.append("script ", keyword_color).append(trim_file_path(class_obj.main_script_path, gdscript_parser), global_function_color)
 		
 		var inherited = class_obj.get_inherited_scripts()
 		if not inherited.is_empty():
@@ -974,7 +932,10 @@ class MemberData:
 		var script_base_type = class_obj.script_base_type
 		if script_base_type == "":
 			script_base_type = "Could not find"
-		#print("::",script_base_type,"::")
 		pr.new_line().append("Base Type: ").append(script_base_type, base_type_color)
 		return pr
-	
+
+
+class Keys:
+	const IN_SCRIPT_EDITOR_SIDEBAR = &"outline.keys.in_script_editor_sidebar"
+	pass
