@@ -1,15 +1,19 @@
 extends VBoxContainer
 
-const TreeHelperBase = ALibRuntime.TreeHelperBase
-const UResource = ALibRuntime.Utils.UResource
-const GDScriptFileAccess = UResource.GDScriptFileAccess
+const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
-const ScriptListManager = ALibEditor.Singletons.ScriptListManager
+const TreeHelperBase = UtilsRemote.TreeHelperBase
+const UResource = UtilsRemote.UResource
+const GDScriptFileAccess = UtilsRemote.GDScriptFileAccess
 
-const RightClickHandler = ClickHandlers.RightClickHandler
-const Options = RightClickHandler.Options
+const ScriptListManager = UtilsRemote.ScriptListManager
 
-const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
+const RightClickHandler = UtilsRemote.RightClickHandler
+const Options = UtilsRemote.Options
+
+const CacheHelper = UtilsRemote.CacheHelper
+
+const TEXT_FILE_TYPES = ["gd", "json", "cfg", "txt", "ini", "md"]
 
 var script_list_manager:ScriptListManager
 var filesystem_singleton:FileSystemSingleton
@@ -23,7 +27,10 @@ var filter_line_edit:LineEdit
 
 var current_files:PackedStringArray = []
 
-var root_dir = "res://addons/"
+var root_dir = "res://"
+
+var _flat_view:=false
+
 
 
 var _script_data:= {}
@@ -62,6 +69,17 @@ func _ready() -> void:
 	
 	_on_file_system_changed()
 
+func get_options():
+	var options = Options.new()
+	
+	options.add_option("Flat View (%s)" % _flat_view, _set_flat_view.bind(not _flat_view), [])
+	
+	return options
+
+func _set_flat_view(state:bool):
+	_flat_view = state
+	_build_tree()
+
 
 func _on_file_system_changed():
 	_script_data = {}
@@ -76,12 +94,12 @@ func set_root_dir(root:String):
 
 func _set_current_files():
 	if root_dir == "res://":
-		current_files = filesystem_singleton.get_paths_of_ext(["gd"])
+		current_files = filesystem_singleton.get_paths_of_ext(TEXT_FILE_TYPES)
 	else:
 		current_files.clear()
 		var files = filesystem_singleton.get_files_in_dir(root_dir)
 		for f in files:
-			if f.get_extension() == "gd":
+			if f.get_extension() in TEXT_FILE_TYPES:
 				current_files.append(f)
 
 
@@ -100,7 +118,15 @@ func _build_tree():
 	#tree_helper.
 	for f in current_files:
 		var script_data = _get_script_data(f)
-		var _last_item = tree_helper.new_file_path(f, root_dir, script_data)
+		if not _flat_view:
+			var _last_item = tree_helper.new_file_path(f, root_dir, script_data)
+		else:
+			var item = script_tree.create_item(root)
+			item.set_text(0, f.get_file())
+			item.set_tooltip_text(0, f)
+			item.set_metadata(0, {TreeHelperBase.Keys.METADATA_PATH: f})
+			tree_helper.set_item_icon(item, script_data)
+			
 	
 	_update_tree_items()
 
@@ -113,6 +139,7 @@ func _get_script_data(file_path:String):
 	var data = {}
 	data[ScriptTreeKeys.SCRIPT_PATH] = file_path
 	data[ScriptTreeKeys.SCRIPT_IS_TOOL] = GDScriptFileAccess.get_is_tool(file_path)
+	data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_type_icon(file_path)
 	#print(file_path,"::TOOL::", data[ScriptTreeKeys.SCRIPT_IS_TOOL] )
 	CacheHelper.store_data(file_path, data, _script_data, [file_path])
 	return data
@@ -162,7 +189,6 @@ func _is_filtering():
 
 class ScriptTreeHelper extends TreeHelperBase:
 	
-	var gd_icon = EditorInterface.get_editor_theme().get_icon(&"GDScript", &"EditorIcons")
 	var tool_color:Color
 	
 	var script_list_manager:ScriptListManager
@@ -191,9 +217,12 @@ class ScriptTreeHelper extends TreeHelperBase:
 		if bg_color:
 			slice_item.set_custom_bg_color(0, bg_color)
 	
+	# for use with flat view
+	func set_item_icon(item:TreeItem, file_data:Dictionary):
+		_set_item_icon(item, file_data)
 	
 	func _set_item_icon(last_item:TreeItem, file_data:Dictionary):
-		last_item.set_icon(0, gd_icon)
+		last_item.set_icon(0, file_data.get(ScriptTreeKeys.SCRIPT_ICON))
 		if file_data.get(ScriptTreeKeys.SCRIPT_IS_TOOL, false) == true:
 			last_item.set_icon_modulate(0, tool_color)
 		else:
@@ -206,3 +235,4 @@ class ScriptTreeKeys:
 	
 	const SCRIPT_PATH = &"script_path"
 	const SCRIPT_IS_TOOL = &"script_is_tool"
+	const SCRIPT_ICON = &"script_icon"

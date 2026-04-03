@@ -1,4 +1,4 @@
-extends VBoxContainer
+extends MarginContainer
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
@@ -8,29 +8,15 @@ const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
 const ParserKeys = GDScriptParser.Keys
 
-const PluginButton = UtilsRemote.PluginButton
-
 const UString = UtilsRemote.UString
 const Pr = UString.PrintRich
 
 const EditorColors = UtilsRemote.EditorColors
 const UClassDetail = UtilsRemote.UClassDetail
 
-const EditorIcons = ALibEditor.Singletons.EditorIcons
-
 const RightClickHandler = ClickHandlers.RightClickHandler
 const Options = ALibRuntime.Popups.Options
 
-## script tree
-const ScriptTree = preload("res://addons/script_outline/src/script_tree.gd")
-var script_tree:ScriptTree
-
-const FileSystemTab = preload("res://addons/addon_lib/brohd/alib_editor/file_system/components/filesystem_tab.gd")
-var tab:FileSystemTab
-
-const ScriptContainer = preload("res://addons/script_outline/src/script_container.gd")
-var script_container:ScriptContainer
-## //
 
 const _ED_ICONS = &"EditorIcons"
 
@@ -61,23 +47,12 @@ enum SortMode {
 }
 
 var _dock_data:Dictionary
-var _in_script_editor_sidebar:bool = false
 
 var right_click_handler:RightClickHandler
 
-var _main_margin:MarginContainer
-var _main_vbox:VBoxContainer
-
+var _vbox:VBoxContainer
 var toolbar:HBoxContainer
 var filter_line_edit:LineEdit
-var options_button:Button
-
-var dock_button:Button
-var dock_manager:DockManager
-
-var editor_script_list_vbox:VBoxContainer
-var editor_outline_vbox:VBoxContainer
-
 
 var outline_tree:OutlineTree
 var _tree_script_item_data:= {}
@@ -91,28 +66,18 @@ var _updated:=false
 
 func get_dock_data() -> Dictionary:
 	var data = {}
-	data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
 	return data
 
 func set_dock_data(data:Dictionary) -> void:
 	print("SETTING::", data)
 	_dock_data = data
-	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR)
 
 
 func _ready() -> void:
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
 	
-	
-	
-	
 	#ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
 	ScriptEditorRef.subscribe(ScriptEditorRef.Event.TEXT_CHANGED, _on_editor_text_changed)
-	
-	EditorNodeRef.call_on_ready(_move_editor_nodes)
-	
-	right_click_handler = RightClickHandler.new()
-	add_child(right_click_handler)
 	
 	var editor_parser = EditorGDScriptParser.get_instance()
 	editor_parser.editor_script_changed.connect(_on_editor_script_changed, 1)
@@ -121,31 +86,11 @@ func _ready() -> void:
 	# build nodes
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
-	_main_margin = ALibEditor.UIHelpers.Margin.new_plugin_margin_container()
-	add_child(_main_margin)
-	#_main_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_main_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	_main_vbox = VBoxContainer.new()
-	_main_margin.add_child(_main_vbox)
-	
-	# script tree
-	script_container = ScriptContainer.new()
-	_main_vbox.add_child(script_container)
-	script_container.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	#script_tree = ScriptTree.new()
-	#_main_vbox.add_child(script_tree)
-	#script_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	#tab = FileSystemTab.new()
-	#_main_vbox.add_child(tab)
-	#tab.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	# //
+	_vbox = VBoxContainer.new()
+	add_child(_vbox)
 	
 	toolbar = HBoxContainer.new()
-	_main_vbox.add_child(toolbar)
+	_vbox.add_child(toolbar)
 	
 	filter_line_edit = LineEdit.new()
 	toolbar.add_child(filter_line_edit)
@@ -155,15 +100,8 @@ func _ready() -> void:
 	filter_line_edit.clear_button_enabled = true
 	filter_line_edit.text_changed.connect(_on_filter_text_changed)
 	
-	options_button = PluginButton.new("TripleBar", _on_options_pressed).get_button()
-	toolbar.add_child(options_button)
-	
-	dock_button = PluginButton.new().get_button()
-	toolbar.add_child(dock_button)
-	dock_button.hide.call_deferred()
-	
 	outline_tree = OutlineTree.new()
-	_main_vbox.add_child(outline_tree)
+	_vbox.add_child(outline_tree)
 	outline_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outline_tree.hide_root = true
 	
@@ -172,16 +110,6 @@ func _ready() -> void:
 	if is_instance_valid(current_parser):
 		_on_editor_script_changed(current_parser.get_current_script())
 		_build_tree()
-
-
-func _move_editor_nodes():
-	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as Node
-	editor_script_list_vbox = side_bar_v.get_child(0)
-	editor_outline_vbox = side_bar_v.get_child(1)
-	
-	if _in_script_editor_sidebar:
-		print("MOVING")
-		_move_to_from_sidebar(true)
 
 
 func _on_editor_text_changed():
@@ -222,6 +150,7 @@ func _on_parse_completed(): # move this here, ensures the build is after the par
 	print("ON PARSE COMPLETE")
 	_build_tree()
 
+
 func _build_tree():
 	if _current_script_path == "" or not _current_script_path.ends_with(".gd"):
 		outline_tree.clear()
@@ -231,70 +160,27 @@ func _build_tree():
 	outline_tree.build_tree.call_deferred()
 
 
-func _on_options_pressed():
+
+func get_margins():
+	return [self]
+
+func get_options():
 	var options = Options.new()
-	var in_docks = _is_in_docks()
-	
-	for mode in SortMode.keys():
-		var mode_num = SortMode[mode]
-		options.add_radio_option("Sort/" + mode, _set_sort_mode.bind(mode_num), outline_tree.sort_mode == mode_num, ["Sort", null])
-	
-	var move_message = "Move to ScriptEditor" if in_docks else "Move to Docks"
-	var move_icon = "Script" if in_docks else "EditorDock"
-	options.add_option(move_message, _move_to_from_sidebar.bind(in_docks), [move_icon])
-	
-	if in_docks:
-		options.add_option("DockManager", func():dock_button.pressed.emit(), ["MakeFloating"])
-	else:
-		var script_vis = editor_script_list_vbox.visible
-		options.add_option("Toggle Script List", _toggle_script_list.bind(not script_vis), [EditorIcons.get_visibility_icon(script_vis)])
-	
-	right_click_handler.display_on_control(options, options_button)
+	options.add_enum_radio("Sort", _set_sort_mode, SortMode, outline_tree.sort_mode, ["Sort", null])
+	return options
 
-func _is_in_docks():
-	var parent = get_parent()
-	var par_class = parent.get_class()
-	if par_class == "EditorDock":
-		return true
-	var parent_parent = parent.get_parent()
-	if parent_parent is DockManager.PanelWindow:
-		return true
-	return false
 
-func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
-	var side_bar_v = EditorNodeRef.get_node_ref(EditorNodeRef.Nodes.SCRIPT_EDITOR_SIDEBAR_V_SPLIT) as VSplitContainer
-	var split_offsets = side_bar_v.split_offsets
-	if to_sidebar:
-		dock_manager.remove_control_from_parent()
-		side_bar_v.add_child(self)
-		side_bar_v.remove_child(editor_outline_vbox)
-	else:
-		side_bar_v.remove_child(self)
-		side_bar_v.add_child(editor_outline_vbox)
-		dock_manager.dock_instance(dock_manager.default_dock)
-		_toggle_script_list(true)
-	
-	if set_status:
-		_in_script_editor_sidebar = to_sidebar
-	
-	_set_margins(to_sidebar)
-	side_bar_v.split_offsets = split_offsets
 
-func _toggle_script_list(vis:bool):
-	editor_script_list_vbox.visible = vis
-	if not vis:
-		var line_edit = editor_script_list_vbox.get_child(0) as LineEdit
-		line_edit.clear()
 
-func _set_margins(sidebar:bool):
-	var val = -2
-	if sidebar:
-		val = 0
-	val *= EditorInterface.get_editor_scale()
-	ALibRuntime.NodeUtils.NUMarginContainer.set_margins(_main_margin, val)
+
+
 
 func clean_up():
-	_move_to_from_sidebar(false, false)
+	pass
+
+
+
+
 
 
 func _set_sort_mode(mode:SortMode):
@@ -934,8 +820,3 @@ class MemberData:
 			script_base_type = "Could not find"
 		pr.new_line().append("Base Type: ").append(script_base_type, base_type_color)
 		return pr
-
-
-class Keys:
-	const IN_SCRIPT_EDITOR_SIDEBAR = &"outline.keys.in_script_editor_sidebar"
-	pass
