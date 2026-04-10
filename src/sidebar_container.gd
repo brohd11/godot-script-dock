@@ -43,6 +43,7 @@ var _ui_controls := []
 func get_dock_data() -> Dictionary:
 	var data = {}
 	data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
+	data[Keys.VIEW_MODE] = _current_view_mode
 	
 	for control:Control in _ui_controls:
 		if control.has_method(&"get_dock_data"):
@@ -54,6 +55,7 @@ func set_dock_data(data:Dictionary) -> void:
 	print("SETTING::", data)
 	_dock_data = data
 	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR)
+	_current_view_mode = _dock_data.get(Keys.VIEW_MODE, ViewMode.BOTH) as ViewMode
 	
 	_ui_controls_call(&"set_dock_data", [data])
 
@@ -74,8 +76,6 @@ func _init():
 
 
 func _ready() -> void:
-	EditorNodeRef.call_on_ready(_on_enr_ready)
-	
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	
 	dock_button = PluginButton.new().get_button()
@@ -83,9 +83,9 @@ func _ready() -> void:
 	dock_button.hide.call_deferred()
 	
 	options_button = PluginButton.new("TripleBar", _on_options_pressed).get_button()
-	_move_options_button()
-
-
+	#_move_options_button()
+	
+	EditorNodeRef.call_on_ready.call_deferred(_on_enr_ready)
 
 
 func _on_enr_ready():
@@ -98,6 +98,8 @@ func _on_enr_ready():
 		_move_to_from_sidebar(true)
 	else:
 		set_margins(false)
+	
+	_set_view_mode(_current_view_mode)
 
 
 func _set_view_mode(view_mode:ViewMode):
@@ -142,7 +144,7 @@ func _on_options_pressed():
 	if in_docks:
 		options.add_option("DockManager", func():dock_button.pressed.emit(), ["MakeFloating"])
 	
-	options.add_enum_radio("View Mode", _set_view_mode, ViewMode, _current_view_mode)
+	options.add_enum_radio("View Mode", _set_view_mode, ViewMode, _current_view_mode, ["Panels2", null])
 	# this can be a view mode thing now, cycle script list outline etc
 	#var script_vis = editor_script_list_vbox.visible
 	#options.add_option("Toggle Script List", _toggle_script_list.bind(not script_vis), [EditorIcons.get_visibility_icon(script_vis)])
@@ -175,19 +177,22 @@ func _is_in_docks():
 	return false
 
 func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
+	if set_status:
+		_in_script_editor_sidebar = to_sidebar
+	
 	if to_sidebar:
 		dock_manager.remove_control_from_parent()
 		editor_side_bar_vsplit.add_child(self)
 		editor_side_bar_vsplit.remove_child(editor_outline_vbox)
 		editor_script_list_vbox.hide()
 	else:
-		editor_side_bar_vsplit.remove_child(self)
-		editor_side_bar_vsplit.add_child(editor_outline_vbox)
+		if get_parent() == editor_side_bar_vsplit:
+			editor_side_bar_vsplit.remove_child(self)
+		if editor_outline_vbox.get_parent() != editor_side_bar_vsplit:
+			editor_side_bar_vsplit.add_child(editor_outline_vbox)
 		editor_script_list_vbox.show()
 		dock_manager.dock_instance(dock_manager.default_dock)
 	
-	if set_status:
-		_in_script_editor_sidebar = to_sidebar
 	
 	set_margins(to_sidebar)
 
@@ -239,5 +244,5 @@ func _ui_controls_call(callable_name:StringName, args:=[]):
 
 
 class Keys:
-	const IN_SCRIPT_EDITOR_SIDEBAR = &"outline.keys.in_script_editor_sidebar"
-	pass
+	const IN_SCRIPT_EDITOR_SIDEBAR = &"sidebar_container.in_script_editor_sidebar"
+	const VIEW_MODE = &"sidebar_container.view_mode"

@@ -69,7 +69,6 @@ func get_dock_data() -> Dictionary:
 	return data
 
 func set_dock_data(data:Dictionary) -> void:
-	print("SETTING::", data)
 	_dock_data = data
 
 
@@ -288,7 +287,7 @@ class OutlineTree extends Tree:
 				item.set_text(0, c)
 				
 				var type = class_obj.get_member_type(c)
-				var icon = MemberData.get_type_icon(type, gdscript_parser)
+				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj)
 				item.set_icon(0, icon)
 				
 				#item.set_icon(0, MemberData.get_icon(MemberType.CONST))
@@ -314,7 +313,7 @@ class OutlineTree extends Tree:
 				item.set_text(0, m)
 				
 				var type = class_obj.get_member_type(m)
-				var icon = MemberData.get_type_icon(type, gdscript_parser, true)
+				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj, true)
 				item.set_icon(0, icon)
 				
 				#item.set_icon(0, MemberData.get_icon(MemberType.VAR))
@@ -357,7 +356,7 @@ class OutlineTree extends Tree:
 				
 				#item.set_icon(0, MemberData.get_icon(MemberType.FUNC))
 				var type = func_obj.get_return_type()
-				var icon = MemberData.get_type_icon(type, gdscript_parser)
+				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj)
 				item.set_icon(0, icon)
 				item.set_text(0, f)
 				if not item_tags.is_empty():
@@ -554,6 +553,7 @@ class OutlineTree extends Tree:
 			pr.append(" " + member_name, MemberData.function_def_color).append("()", MemberData.symbol_color)
 			
 			var function_data = member_data.get_function_data()
+			print("FUNC DATA::", member_name, "::", function_data)
 			var args = function_data.get(ParserKeys.FUNC_ARGS)
 			var ret_type = function_data.get(ParserKeys.FUNC_RETURN, "void")
 			if ret_type == "":
@@ -693,15 +693,15 @@ class MemberData:
 	static func is_a_gdscript_file(file_path:String):
 		return GDScriptParser.Utils.is_gdscript_path(file_path)
 	
-	static func get_type_icon(type:String, gdscript_parser:GDScriptParser, is_instance:=false) -> Texture2D:
+	static func get_type_icon(type:String, gdscript_parser:GDScriptParser, current_class_obj:ParserClass, is_instance:=false) -> Texture2D:
 		#print("GET ICON::", type)
 		var editor_theme = EditorInterface.get_editor_theme()
 		if type.is_empty():
 			return editor_theme.get_icon(&"Nil", _ED_ICONS)
 		elif type == &"void":
 			return editor_theme.get_icon(&"Nil", _ED_ICONS)
-		#elif type.begins_with("res://"):
-		elif type.is_absolute_path():
+		
+		if type.is_absolute_path():
 			if not is_a_gdscript_file(type):
 				var ext = type.get_extension()
 				match ext:
@@ -727,8 +727,19 @@ class MemberData:
 		else:
 			if editor_theme.has_icon(type, _ED_ICONS):
 				return editor_theme.get_icon(type, _ED_ICONS)
-			else:
-				return editor_theme.get_icon(&"Variant", _ED_ICONS)
+			
+			var member_type = current_class_obj.get_class_member_type(type, true)
+			if member_type == "" and type.contains("."):
+				var dot = type.find(".")
+				var front = type.substr(0, dot)
+				var back = type.substr(dot + 1)
+				member_type = GDScriptParser.TypeLookup.get_class_member_type(front, back, true)
+			
+			if member_type != "" and editor_theme.has_icon(member_type, _ED_ICONS):
+				return editor_theme.get_icon(member_type, _ED_ICONS)
+			
+			return editor_theme.get_icon(&"Variant", _ED_ICONS)
+	
 	
 	static func get_icon(member_type:MemberType):
 		var icon_name:String
