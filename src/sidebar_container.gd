@@ -52,7 +52,7 @@ func get_dock_data() -> Dictionary:
 	return data
 
 func set_dock_data(data:Dictionary) -> void:
-	print("SETTING::", data)
+	#print("SETTING::", data)
 	_dock_data = data
 	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR)
 	_current_view_mode = _dock_data.get(Keys.VIEW_MODE, ViewMode.BOTH) as ViewMode

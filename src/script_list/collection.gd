@@ -52,8 +52,10 @@ func _ready() -> void:
 	item_list.set_drag_forwarding(_item_list_get_drag_data, _item_list_can_drop_data, _item_list_drop_data)
 	
 	filesystem_singleton = FileSystemSingleton.get_instance()
+	FileSystemSingleton.call_on_ready(_on_fs_ready)
+
+func _on_fs_ready():
 	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
-	
 	_build_list()
 
 func _on_file_system_changed():
@@ -97,7 +99,7 @@ func _item_list_get_drag_data(at_pos:Vector2):
 		#return
 	var item = item_list.get_item_at_position(at_pos)
 	var path = get_item_path(item)
-	var data = {"type":"files", "files": [path], "from": self}
+	var data = {"type":"files", "files": [path], "from": self, Keys.DROP_DATA_FROM_IDX: item}
 	return data
 
 func _item_list_can_drop_data(_at_position: Vector2, data: Variant) -> bool:
@@ -117,7 +119,9 @@ func _item_list_drop_data(at_position: Vector2, data: Variant) -> void:
 	var from = data.get("from")
 	if from is Self:
 		var file_path = files[0]
-		var uid = UFile.path_to_uid(file_path)
+		var from_idx = data.get(Keys.DROP_DATA_FROM_IDX)
+		var item_data = from.item_list.get_item_metadata(from_idx)
+		var uid = item_data.get(Keys.UID)
 		var new_idx = min(item_list.get_item_at_position(at_position), item_list.item_count - 1)
 		if from != self:
 			from.collection_data.erase(uid)
@@ -125,7 +129,9 @@ func _item_list_drop_data(at_position: Vector2, data: Variant) -> void:
 			from.reindex_items()
 		
 		if not collection_data.has(uid):
-			collection_data[uid] = {Keys.IDX: collection_data.size()}
+			item_data[Keys.IDX] = collection_data.size()
+			collection_data[uid] = item_data
+		
 		_move_item(uid, new_idx)
 	else:
 		for f in files:
@@ -191,7 +197,7 @@ func _open_or_activate_path(path:String, right_click:=false, click_pos:=Vector2(
 	if not FileAccess.file_exists(path):
 		printerr("Script Outline - Collection - File does not exist: ", path)
 		return
-	var script_idx = script_list_manager.get_script_index_or_open(path)
+	var script_idx = script_list_manager.get_script_index_or_open(path, filesystem_singleton)
 	if script_idx != -1:
 		script_list_manager.activate_item_by_idx(script_idx) # script tabs activates when tab changes, so this is needed here
 		if right_click:
@@ -208,9 +214,9 @@ func _custom_right_click():
 
 
 func _remove_item(idx:int):
-	var path = get_item_path(idx)
+	var metadata = item_list.get_item_metadata(idx)
+	var uid = metadata.get(Keys.UID)
 	item_list.remove_item(idx)
-	var uid = UFile.path_to_uid(path)
 	collection_data.erase(uid)
 	reindex_items()
 
@@ -224,7 +230,10 @@ func add_path(path:String):
 	var uid = UFile.path_to_uid(path)
 	if not collection_data.has(uid):
 		var next_idx = collection_data.size()
-		collection_data[uid] = {Keys.IDX: next_idx}
+		collection_data[uid] = {
+			Keys.IDX: next_idx,
+			Keys.PATH: path,
+			}
 
 
 
@@ -234,7 +243,8 @@ func set_tab_data(data:Dictionary):
 	for uid in col_data.keys():
 		var uid_data = col_data[uid]
 		collection_data[uid] = {
-			Keys.IDX: int(uid_data.get(Keys.IDX))
+			Keys.IDX: int(uid_data.get(Keys.IDX)),
+			Keys.PATH: uid_data.get(Keys.PATH)
 		}
 
 func get_tab_data() -> Dictionary:
@@ -248,12 +258,15 @@ func _get_display_names(sort:=true) -> Dictionary:
 	var groups: Dictionary = {}
 	
 	for uid in collection_data.keys(): # --- STEP 1: Parse paths and group by file name ---
+		var data = collection_data[uid]
 		var p = UFile.uid_to_path(uid)
+		if p == "":
+			p = data.get(Keys.PATH)
 		
 		var parts = Array(p.split("/"))
 		parts.reverse() # Split the path and reverse it so index 0 is always the file name
 		var filename = parts[0]
-		var file_valid = FileAccess.file_exists(p)
+		var file_valid = FileAccess.file_exists(uid)
 		if not file_valid:
 			filename = filename + " [File not present]"
 		
@@ -325,3 +338,5 @@ class Keys:
 	const VALID_FILE = &"valid_file"
 	
 	const DATA = &"collection.keys.data"
+	
+	const DROP_DATA_FROM_IDX = &"from_idx"

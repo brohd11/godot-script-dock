@@ -155,7 +155,7 @@ func _build_tree():
 		outline_tree.clear()
 		_set_cache_dirty()
 		return
-	#print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
+	print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
 	outline_tree.build_tree.call_deferred()
 
 
@@ -224,10 +224,13 @@ class OutlineTree extends Tree:
 		var class_items = {}
 		var _root = create_item()
 		var gdscript_parser = EditorGDScriptParser.get_parser()
+		print("OUTLINE TREE")
 		print(gdscript_parser)
 		print(gdscript_parser._script_path)
 		print(gdscript_parser.get_classes())
 		var classes = gdscript_parser.get_classes()
+		if classes.is_empty():
+			return
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
 			var class_base_type = class_obj.script_base_type

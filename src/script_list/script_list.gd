@@ -43,6 +43,7 @@ func _on_cache_updated():
 func _build_list():
 	var filtering = current_filter_text != ""
 	if not is_instance_valid(script_list_manager.current_script_editor):
+		item_list.clear() # means there are no editors present
 		return
 	var selected_idx = script_list_manager.current_script_editor.get_index()
 	item_list.clear()

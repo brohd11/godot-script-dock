@@ -26,6 +26,7 @@ func _disable_plugin() -> void:
 	pass
 
 func _enter_tree() -> void:
+	FileSystemSingleton.register_node(self)
 	EditorGDScriptParser.register_node(self)
 	
 	sidebar_container = SideBarContainer.new()
@@ -36,6 +37,7 @@ func _enter_tree() -> void:
 
 
 func _exit_tree() -> void:
+	FileSystemSingleton.unregister_node(self)
 	EditorGDScriptParser.unregister_node(self)
 	
 	if is_instance_valid(sidebar_container):

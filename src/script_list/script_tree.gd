@@ -57,7 +57,7 @@ func _ready() -> void:
 	script_list_manager = ScriptListManager.get_instance()
 	
 	filesystem_singleton = FileSystemSingleton.get_instance()
-	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
+	
 	
 	tree_helper = ScriptTreeHelper.new(script_tree, null, null, null, false)
 	tree_helper.filesystem_singleton = filesystem_singleton
@@ -67,7 +67,11 @@ func _ready() -> void:
 	tree_helper.mouse_left_clicked.connect(_on_item_left_clicked)
 	tree_helper.mouse_right_clicked.connect(_on_item_right_clicked)
 	
-	
+	FileSystemSingleton.call_on_ready(_on_fs_ready)
+
+
+func _on_fs_ready():
+	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
 	_on_file_system_changed()
 	
 	_build_tree()
@@ -152,6 +156,7 @@ func _build_tree():
 			item.set_tooltip_text(0, f)
 			item.set_metadata(0, {TreeHelperBase.Keys.METADATA_PATH: f})
 			tree_helper.set_item_icon(item, script_data)
+			tree_helper.item_dict[f] = item
 			
 	
 	_update_tree_items()
@@ -196,7 +201,7 @@ func _on_new_tab_pressed(selected_path:String):
 func _select_or_open_in_script_list(right_click:=false):
 	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
 	if selected != null:
-		var sl_idx = script_list_manager.get_script_index_or_open(selected)
+		var sl_idx = script_list_manager.get_script_index_or_open(selected, filesystem_singleton)
 		if sl_idx != -1:
 			script_list_manager.activate_item_by_idx(sl_idx)
 			if right_click:
@@ -208,9 +213,12 @@ func _on_filter_line_text_changed(_new_text:String):
 	_update_tree_items()
 
 func _update_tree_items():
-	tree_helper.update_tree_items(_is_filtering(), _filter_text)
+	tree_helper.update_tree_items(_is_filtering(), _filter_text)#, root_dir)
 
 func _filter_text(to_filter:String):
+	var use_file_name = true # should be a setting?
+	if use_file_name:
+		to_filter = to_filter.trim_suffix("/").get_file()
 	return filter_line_edit.text.is_subsequence_of(to_filter)
 
 func _is_filtering():
