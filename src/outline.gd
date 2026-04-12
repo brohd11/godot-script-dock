@@ -1,5 +1,7 @@
 extends MarginContainer
 
+const PLUGIN_EXPORTED = false
+
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
@@ -146,7 +148,7 @@ func _on_file_system_changed():
 
 
 func _on_parse_completed(): # move this here, ensures the build is after the parsing
-	print("ON PARSE COMPLETE")
+	#print("ON PARSE COMPLETE")
 	_build_tree()
 
 
@@ -155,7 +157,8 @@ func _build_tree():
 		outline_tree.clear()
 		_set_cache_dirty()
 		return
-	print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
+	
+	#print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
 	outline_tree.build_tree.call_deferred()
 
 
@@ -224,10 +227,11 @@ class OutlineTree extends Tree:
 		var class_items = {}
 		var _root = create_item()
 		var gdscript_parser = EditorGDScriptParser.get_parser()
-		print("OUTLINE TREE")
-		print(gdscript_parser)
-		print(gdscript_parser._script_path)
-		print(gdscript_parser.get_classes())
+		#print("OUTLINE TREE")
+		#print(gdscript_parser)
+		#print(gdscript_parser._script_path)
+		#print(gdscript_parser.get_classes())
+		
 		var classes = gdscript_parser.get_classes()
 		if classes.is_empty():
 			return
@@ -379,7 +383,9 @@ class OutlineTree extends Tree:
 		
 		cache_dirty = false
 		filter_items()
-		t.stop()
+		
+		if not PLUGIN_EXPORTED:
+			t.stop()
 	
 	
 	func get_sorted_methods(methods: Array, virtual: Dictionary, inherited: Dictionary, statics: Dictionary) -> Array:
