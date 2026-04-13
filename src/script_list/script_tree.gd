@@ -4,7 +4,7 @@ const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.
 
 const TreeHelperBase = UtilsRemote.TreeHelperBase
 const UResource = UtilsRemote.UResource
-const GDScriptFileAccess = UtilsRemote.GDScriptFileAccess
+const UGDScript = UtilsRemote.UGDScript
 
 const ScriptListManager = UtilsRemote.ScriptListManager
 
@@ -144,7 +144,7 @@ func _build_tree():
 		root_text = root_text.trim_suffix("/").get_file()
 	root.set_text(0, root_text)
 	root.set_icon(0, tree_helper.folder_icon)
-	root.set_icon_modulate(0, tree_helper.folder_color)
+	tree_helper.set_folder_icon(root_dir, root)
 	
 	for f in current_files:
 		var script_data = _get_script_data(f)
@@ -169,7 +169,7 @@ func _get_script_data(file_path:String):
 	
 	var data = {}
 	data[ScriptTreeKeys.SCRIPT_PATH] = file_path
-	data[ScriptTreeKeys.SCRIPT_IS_TOOL] = GDScriptFileAccess.get_is_tool(file_path)
+	data[ScriptTreeKeys.SCRIPT_IS_TOOL] = UGDScript.FileRead.get_is_tool(file_path)
 	data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_type_icon(file_path)
 	#print(file_path,"::TOOL::", data[ScriptTreeKeys.SCRIPT_IS_TOOL] )
 	CacheHelper.store_data(file_path, data, _script_data_cache, [file_path])
@@ -246,12 +246,13 @@ class ScriptTreeHelper extends TreeHelperBase:
 
 	func _set_folder_icon_img():
 		var base_ctrl = EditorInterface.get_base_control()
-		#tool_color = base_ctrl.get_theme_color(&"accent_color", &"Editor")
-		#tool_color.s = min(tool_color.s * 1.5, 1.0)
 		folder_icon = base_ctrl.get_theme_icon(&"Folder", &"EditorIcons")
 		folder_color = base_ctrl.get_theme_color(&"folder_icon_color", &"FileDialog")
+	
+	func set_folder_icon(file_path:String, item:TreeItem):
+		_set_folder_icon(file_path, item)
 
-	func _set_folder_icon(file_path, slice_item):
+	func _set_folder_icon(file_path:String, slice_item:TreeItem):
 		var icon = filesystem_singleton.get_type_icon(file_path)
 		slice_item.set_icon(0, icon)
 		var color = filesystem_singleton.get_folder_color(file_path)

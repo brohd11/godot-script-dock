@@ -11,7 +11,7 @@ const Options = UtilsRemote.Options
 
 const UFile = UtilsRemote.UFile
 const UResource = UtilsRemote.UResource
-const GDScriptFileAccess = UtilsRemote.GDScriptFileAccess
+const UGDScript = UtilsRemote.UGDScript
 
 const TEXT_FILE_TYPES = ScriptListManager.TEXT_FILE_TYPES
 
@@ -88,7 +88,7 @@ func _build_list():
 		var idx = item_list.item_count
 		var icon = filesystem_singleton.get_type_icon(path)
 		item_list.add_item(display_name, icon)
-		if GDScriptFileAccess.get_is_tool(path):
+		if UGDScript.FileRead.get_is_tool(path):
 			item_list.set_item_icon_modulate(idx, script_list_manager.tool_color)
 		item_list.set_item_metadata(idx, data)
 		item_list.set_item_tooltip(idx, path)

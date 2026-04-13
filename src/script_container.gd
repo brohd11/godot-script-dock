@@ -9,7 +9,6 @@ const TabBarContainer = UtilsRemote.TabBarContainer
 const UFile = UtilsRemote.UFile
 const UName = UtilsRemote.UName
 const UResource = UtilsRemote.UResource
-const GDScriptFileAccess = UtilsRemote.GDScriptFileAccess
 const UWindow = UtilsRemote.UWindow
 
 const EditorIcons = UtilsRemote.EditorIcons
