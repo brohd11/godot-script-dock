@@ -22,7 +22,6 @@ const Options = ALibRuntime.Popups.Options
 
 const _ED_ICONS = &"EditorIcons"
 
-const MAIN_SCRIPT_LABEL = "Script.Main"
 const _CLASS = &"_class"
 const _CATEGORY = &"_category"
 const _TAGS = &"_tags"
@@ -30,7 +29,7 @@ const _VIRTUAL = &"virtual"
 const _STATIC = &"static"
 const _OVERIDE = &"overide"
 
-enum MemberType {
+enum MemberType{
 	VAR,
 	STATIC_VAR,
 	FUNC,
@@ -317,7 +316,10 @@ class OutlineTree extends Tree:
 				
 				var item = create_item(prop_parent)
 				item.set_expand_right(0, true)
-				item.set_text(0, m)
+				var item_text = m
+				if member_type == ParserKeys.MEMBER_TYPE_STATIC_VAR:
+					item_text += " [static]"
+				item.set_text(0, item_text)
 				
 				var type = class_obj.get_member_type(m)
 				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj, true)
