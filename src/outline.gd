@@ -579,7 +579,7 @@ class OutlineTree extends Tree:
 					if type == "":
 						type = "Nil"
 					if type != "Nil":
-						type = gdscript_parser.resolve_expression(type, member_data.declaration_line)
+						type = gdscript_parser.resolve_expression_to_type(type, member_data.declaration_line)
 					
 					if type.is_absolute_path(): # this will work on "strings", but strings should be resovled by now
 						type = MemberData.trim_file_path(type, gdscript_parser)
@@ -607,11 +607,12 @@ class OutlineTree extends Tree:
 				var class_access_path = script_data[1]
 				if script.get_global_name() != "":
 					pr.append(script.get_global_name(), MemberData.user_type_color)
-					pr.append(".", MemberData.symbol_color)
-					#if type.ends_with(ParserKeys.ENUM_PATH_SUFFIX): #^r not sure about enum color
-						#pr.append(class_access_path, MemberData.string_name_color)
-					#else:
-					pr.append(class_access_path, MemberData.base_type_color)
+					if class_access_path != "":
+						pr.append(".", MemberData.symbol_color)
+						#if type.ends_with(ParserKeys.ENUM_PATH_SUFFIX): #^r not sure about enum color
+							#pr.append(class_access_path, MemberData.string_name_color)
+						#else:
+						pr.append(class_access_path, MemberData.base_type_color)
 				else:
 					#if type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
 						#pr.append(MemberData.trim_file_path(type), MemberData.string_name_color)
