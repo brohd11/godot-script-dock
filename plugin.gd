@@ -2,28 +2,18 @@
 extends EditorPlugin
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
-
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 
 const SideBarContainer = preload("res://addons/script_outline/src/sidebar_container.gd")
 
-
 var sidebar_container:SideBarContainer
 var dm_instance_manager:DockManager.InstanceManager
-
-
 
 func _get_plugin_name() -> String:
 	return "Script Outline"
 func _get_plugin_icon() -> Texture2D:
 	return EditorInterface.get_base_control().get_theme_icon("Node", &"EditorIcons")
 
-
-func _enable_plugin() -> void:
-	pass
-
-func _disable_plugin() -> void:
-	pass
 
 func _enter_tree() -> void:
 	FileSystemSingleton.register_node(self)
@@ -45,5 +35,3 @@ func _exit_tree() -> void:
 	
 	if is_instance_valid(dm_instance_manager):
 		dm_instance_manager.clean_up()
-	
-	

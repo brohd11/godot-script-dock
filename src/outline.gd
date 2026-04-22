@@ -112,6 +112,10 @@ func _ready() -> void:
 		_build_tree()
 
 
+func clean_up():
+	pass
+
+
 func _on_editor_text_changed():
 	_set_cache_dirty()
 
@@ -156,10 +160,7 @@ func _build_tree():
 		outline_tree.clear()
 		_set_cache_dirty()
 		return
-	
-	#print("BUILD::", _current_script_path, "::DIRTY::", outline_tree.cache_dirty, "::PARSER::", EditorGDScriptParser.get_parser().get_script_path())
 	outline_tree.build_tree.call_deferred()
-
 
 
 func get_margins():
@@ -169,19 +170,6 @@ func get_options():
 	var options = Options.new()
 	options.add_enum_radio("Sort", _set_sort_mode, SortMode, outline_tree.sort_mode, ["Sort", null])
 	return options
-
-
-
-
-
-
-
-func clean_up():
-	pass
-
-
-
-
 
 
 func _set_sort_mode(mode:SortMode):
@@ -387,7 +375,8 @@ class OutlineTree extends Tree:
 		filter_items()
 		
 		if not PLUGIN_EXPORTED:
-			t.stop()
+			#t.stop()
+			pass
 	
 	
 	func get_sorted_methods(methods: Array, virtual: Dictionary, inherited: Dictionary, statics: Dictionary) -> Array:
@@ -426,7 +415,6 @@ class OutlineTree extends Tree:
 	
 	
 	func _on_item_mouse_selected(mouse_pos:Vector2, btn_idx:int):
-		print("CLICKED ", btn_idx)
 		var item = get_item_at_position(mouse_pos)
 		var valid_member = valid_member_item(item)
 		if not valid_member:
@@ -564,7 +552,8 @@ class OutlineTree extends Tree:
 			pr.append(" " + member_name, MemberData.function_def_color).append("()", MemberData.symbol_color)
 			
 			var function_data = member_data.get_function_data()
-			print("FUNC DATA::", member_name, "::", function_data)
+			#print("FUNC DATA::", member_name, "::", function_data)
+			
 			var args = function_data.get(ParserKeys.FUNC_ARGS)
 			var ret_type = function_data.get(ParserKeys.FUNC_RETURN, "void")
 			if ret_type == "":
