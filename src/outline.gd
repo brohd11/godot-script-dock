@@ -375,7 +375,7 @@ class OutlineTree extends Tree:
 		filter_items()
 		
 		if not PLUGIN_EXPORTED:
-			#t.stop()
+			t.stop()
 			pass
 	
 	
@@ -585,9 +585,10 @@ class OutlineTree extends Tree:
 			
 		else: # non func and non class member
 			pr.append(member_type, MemberData.keyword_color).append(" " + member_name, MemberData.member_var_color)
-			pr.append(": ", MemberData.symbol_color)
+			
 			var type = class_obj.get_member_type(member_name)
-			#if not type.begins_with("res://"):
+			if not type.is_empty():
+				pr.append(": ", MemberData.symbol_color)
 			if not type.is_absolute_path():
 				pr.append(type, MemberData.base_type_color)
 			else:
