@@ -7,6 +7,8 @@ const TreeHelperBase = preload("res://addons/addon_lib/brohd/alib_runtime/tree_h
 const PluginButton = preload("res://addons/addon_lib/brohd/alib_editor/ui/button/button_helper.gd").PluginButton #! resolve ALibEditor.UIHelpers.Buttons.PluginButton
 const TabBarContainer = preload("res://addons/addon_lib/brohd/alib_editor/ui/tab/tab_bar_container.gd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
 
+const SettingHelperEditor = preload("uid://c4l4v4eufkmtx") #! resolve ALibEditor.Settings.SettingHelperEditor
+
 const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd") #! resolve ALibRuntime.Utils.UFile
 const UName = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_name.gd") #! resolve ALibRuntime.Utils.UName
 const UResource = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_resource.gd") #! resolve ALibRuntime.Utils.UResource

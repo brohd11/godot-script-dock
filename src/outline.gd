@@ -4,7 +4,10 @@ const PLUGIN_EXPORTED = false
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
+const PathBar = ALibEditor.UIHelpers.Tab.PathBar
+
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
+const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const GDScriptParser = EditorGDScriptParser.GDScriptParser
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
@@ -16,9 +19,8 @@ const Pr = UString.PrintRich
 const EditorColors = UtilsRemote.EditorColors
 const UClassDetail = UtilsRemote.UClassDetail
 
-const RightClickHandler = ClickHandlers.RightClickHandler
-const Options = ALibRuntime.Popups.Options
-
+const RightClickHandler = UtilsRemote.RightClickHandler
+const Options = UtilsRemote.Options
 
 const _ED_ICONS = &"EditorIcons"
 
@@ -47,6 +49,7 @@ enum SortMode {
 	METHOD_TYPE_ALPHA,
 }
 
+var editor_setting_helper:SettingHelperEditor
 var _dock_data:Dictionary
 
 var right_click_handler:RightClickHandler
@@ -54,6 +57,7 @@ var right_click_handler:RightClickHandler
 var _vbox:VBoxContainer
 var toolbar:HBoxContainer
 var filter_line_edit:LineEdit
+var _bread_crumb_tabs:PathBar
 
 var outline_tree:OutlineTree
 var _tree_script_item_data:= {}
@@ -61,8 +65,9 @@ var _tree_script_item_data:= {}
 var _current_script_path:String
 var _current_script_file_mod_time:int=-1
 
-
-var _updated:=false
+var _caret_changed_debounce:bool=false
+var _last_caret_line:int = -1
+var _follow_cursor:bool = false
 
 
 func get_dock_data() -> Dictionary:
@@ -78,6 +83,7 @@ func _ready() -> void:
 	
 	#ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
 	ScriptEditorRef.subscribe(ScriptEditorRef.Event.TEXT_CHANGED, _on_editor_text_changed)
+	ScriptEditorRef.subscribe(ScriptEditorRef.Event.CARET_CHANGED, _on_caret_changed)
 	
 	var editor_parser = EditorGDScriptParser.get_instance()
 	editor_parser.editor_script_changed.connect(_on_editor_script_changed, 1)
@@ -100,11 +106,32 @@ func _ready() -> void:
 	filter_line_edit.clear_button_enabled = true
 	filter_line_edit.text_changed.connect(_on_filter_text_changed)
 	
+	var scroll = ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_vbox.add_child(scroll)
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	
+	_bread_crumb_tabs = PathBar.new()
+	_bread_crumb_tabs.display_mode = PathBar.DisplayMode.OUTLINE
+	_bread_crumb_tabs.drag_to_rearrange_enabled = false
+	_bread_crumb_tabs.tab_close_display_policy = TabBar.CLOSE_BUTTON_SHOW_NEVER
+	scroll.add_child(_bread_crumb_tabs)
+	_bread_crumb_tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	#_bread_crumb_tabs.tab_selected.connect(_on_breadcrumb_selected)
+	_bread_crumb_tabs.tab_clicked.connect(_on_breadcrumb_selected)
+	
 	outline_tree = OutlineTree.new()
 	_vbox.add_child(outline_tree)
 	outline_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outline_tree.hide_root = true
+	outline_tree.selected_changed.connect(_on_tree_selected_changed)
+	outline_tree.tree_built.connect(_on_tree_built)
+	outline_tree.infer_queue_finished.connect(_on_infer_queue_finished, 1)
 	
+	editor_setting_helper = SettingHelperEditor.new()
+	editor_setting_helper.subscribe_property(self, &"_follow_cursor", EditorSet.FOLLOW_CURSOR, false)
+	editor_setting_helper.initialize()
 	
 	var current_parser = EditorGDScriptParser.get_parser()
 	if is_instance_valid(current_parser):
@@ -114,6 +141,7 @@ func _ready() -> void:
 
 func clean_up():
 	pass
+
 
 
 func _on_editor_text_changed():
@@ -150,10 +178,8 @@ func _on_file_system_changed():
 		_set_cache_dirty() # set cache to dirty so it will rebuild tree
 
 
-func _on_parse_completed(): # move this here, ensures the build is after the parsing
-	#print("ON PARSE COMPLETE")
+func _on_parse_completed():
 	_build_tree()
-
 
 func _build_tree():
 	if _current_script_path == "" or not _current_script_path.ends_with(".gd"):
@@ -161,6 +187,84 @@ func _build_tree():
 		_set_cache_dirty()
 		return
 	outline_tree.build_tree.call_deferred()
+
+
+func _on_tree_selected_changed(clicked:bool):
+	if clicked:
+		_caret_changed_debounce = true
+	_build_breadcrumb.call_deferred()
+
+func _on_caret_changed():
+	var caret_line = ScriptEditorRef.get_current_code_edit().get_caret_line()
+	var new_line = caret_line != _last_caret_line
+	_last_caret_line = caret_line
+	
+	if _caret_changed_debounce: # set when moving the caret in outline tree from a click
+		_caret_changed_debounce = false
+		return
+	
+	if new_line:
+		_set_current_access_path()
+
+func _on_tree_built():
+	_set_current_access_path(true)
+
+func _on_infer_queue_finished():
+	_build_breadcrumb()
+
+func _build_breadcrumb(current_access_path:String="null"):
+	if current_access_path == "null":
+		current_access_path = MemberData.get_current_access_path()
+	
+	var full_breadcrumb = _get_selected_breadcrumb(true)
+	var current_tab = _bread_crumb_tabs.current_tab
+	var keep_tabs =  full_breadcrumb.begins_with(current_access_path)
+	#print("KEEP::", keep_tabs, "::CURR::", current_access_path, "::BREAD::", full_breadcrumb)
+	if current_access_path == "null":
+		return
+	
+	if keep_tabs:
+		_bread_crumb_tabs.current_tab = current_tab
+	else:
+		_bread_crumb_tabs.clear_tabs()
+		
+		_bread_crumb_tabs.add_tab(MemberData.get_main_script_name(), outline_tree.get_item_icon_for_path(""))
+		_bread_crumb_tabs.set_tab_metadata(0, "")
+		
+		var working_path = ""
+		for part in UString.split_member_access(current_access_path):
+			working_path = UString.dot_join(working_path, part)
+			_bread_crumb_tabs.add_tab(part, outline_tree.get_item_icon_for_path(working_path))
+			_bread_crumb_tabs.set_tab_metadata(_bread_crumb_tabs.tab_count - 1, working_path)
+		
+		_bread_crumb_tabs.current_tab = _bread_crumb_tabs.tab_count - 1
+
+func _on_breadcrumb_selected(sel:int) -> void:
+	var access_path = _bread_crumb_tabs.get_tab_metadata(sel)
+	if access_path == null:
+		return
+	outline_tree.select_path(access_path, true, true)
+
+func _get_selected_breadcrumb(longest:bool=false) -> String:
+	if _bread_crumb_tabs.tab_count == 0:
+		return "null"
+	var idx = _bread_crumb_tabs.current_tab if not longest else _bread_crumb_tabs.tab_count - 1
+	var selected = _bread_crumb_tabs.get_tab_metadata(idx)
+	if selected == null:
+		selected = "null"
+	return selected
+
+
+func _set_current_access_path(build:=false):
+	var selected = _get_selected_breadcrumb()
+	var current_access_path = MemberData.get_current_access_path()
+	if build:
+		_build_breadcrumb(current_access_path)
+	if current_access_path == "null" or selected == current_access_path:
+		return
+	if _follow_cursor:
+		outline_tree.select_path(current_access_path, true, false)
+
 
 
 func get_margins():
@@ -184,15 +288,25 @@ func _on_filter_text_changed(new_text:String):
 	outline_tree.filter_items()
 
 
+
 class OutlineTree extends Tree:
 	var cache_dirty:bool = true
 	var current_script_item_data:= {}
+	var _item_dict:= {}
 	
 	var last_filter_text:String = ""
 	var current_filter_text:String = ""
 	var is_filtering:bool = false
 	
 	var sort_mode:SortMode = SortMode.NONE
+	
+	var _editor_theme:Theme
+	var _infer_queue:= []
+	var _infer_queue_processing:=false
+	
+	signal selected_changed(clicked:bool)
+	signal tree_built
+	signal infer_queue_finished
 	
 	func _ready() -> void:
 		item_mouse_selected.connect(_on_item_mouse_selected)
@@ -202,23 +316,25 @@ class OutlineTree extends Tree:
 	
 	
 	func build_tree():
-		MemberData.set_colors()
-		
 		if not cache_dirty:
 			return
 		
-		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("BUILD OUTLINE")
-		var editor_theme = EditorInterface.get_editor_theme()
+		_editor_theme = EditorInterface.get_editor_theme()
+		MemberData.set_colors()
 		
+		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("BUILD OUTLINE")
+		
+		var selected_path = "null"
+		var selected = get_selected()
+		if is_instance_valid(selected):
+			selected_path = get_item_access_path(selected)
+		
+		_clear_infer_queue()
 		clear()
+		
 		var class_items = {}
 		var _root = create_item()
 		var gdscript_parser = EditorGDScriptParser.get_parser()
-		#print("OUTLINE TREE")
-		#print(gdscript_parser)
-		#print(gdscript_parser._script_path)
-		#print(gdscript_parser.get_classes())
-		
 		var classes = gdscript_parser.get_classes()
 		if classes.is_empty():
 			return
@@ -232,18 +348,26 @@ class OutlineTree extends Tree:
 				var last_access = ""
 				if access_path.contains("."):
 					last_access = UString.trim_member_access_back(access_path)
-				item_parent = create_item(class_items.get(last_access))
+				var last_access_item = null
+				if last_access != "":
+					last_access_item = class_items.get(last_access)
+				
+				var full_access_path = UString.dot_join(last_access, access_path)
+				item_parent = create_item(last_access_item)
 				var _c_name = MemberData.get_main_script_name() if access_path == "" else UString.get_member_access_back(access_path)
 				item_parent.set_text(0, _c_name)
-				var icon_name = class_base_type
-				if not editor_theme.has_icon(icon_name, _ED_ICONS): # icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, _ED_ICONS):
-					icon_name = "Object"
-				item_parent.set_icon(0, editor_theme.get_icon(icon_name, _ED_ICONS))
-				var meta = {ParserKeys.ACCESS_PATH: last_access, _CLASS:true}
+				var meta = {ParserKeys.ACCESS_PATH: full_access_path, _CLASS:true}
 				item_parent.set_metadata(0, meta)
+				var icon_name = class_base_type
+				if not _editor_theme.has_icon(icon_name, _ED_ICONS): # icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, _ED_ICONS):
+					icon_name = "Object"
+				
+				_set_item_icon(item_parent, full_access_path, icon_name)
+				#item_parent.set_icon(0, _editor_theme.get_icon(icon_name, _ED_ICONS))
+				
 				_set_collapsed(item_parent, access_path != "")
-				if access_path != "":
-					class_items[access_path] = item_parent
+				#if access_path != "":
+				class_items[access_path] = item_parent
 			
 			var prop_parent = item_parent
 			var const_parent = item_parent
@@ -251,19 +375,19 @@ class OutlineTree extends Tree:
 			if true: # add a flag for categories?
 				const_parent = create_item(item_parent)
 				const_parent.set_text(0, "Constants")
-				const_parent.set_icon(0, MemberData.get_icon(MemberType.CONST))
+				const_parent.set_icon(0, _editor_theme.get_icon(&"MemberConstant", _ED_ICONS))
 				const_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
 				_set_collapsed(const_parent)
 				
 				prop_parent = create_item(item_parent)
 				prop_parent.set_text(0, "Properties")
-				prop_parent.set_icon(0, MemberData.get_icon(MemberType.VAR))
+				prop_parent.set_icon(0, _editor_theme.get_icon(&"MemberProperty", _ED_ICONS))
 				prop_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
 				_set_collapsed(prop_parent)
 				
 				func_parent = create_item(item_parent)
 				func_parent.set_text(0, "Methods")
-				func_parent.set_icon(0, MemberData.get_icon(MemberType.FUNC))
+				func_parent.set_icon(0, _editor_theme.get_icon(&"MemberMethod", _ED_ICONS))
 				func_parent.set_metadata(0, {ParserKeys.ACCESS_PATH: access_path, _CATEGORY:true})
 				_set_collapsed(func_parent)
 			
@@ -277,18 +401,16 @@ class OutlineTree extends Tree:
 				var member_data = class_obj.constants.get(c)
 				if not member_data.get(ParserKeys.ACCESS_PATH).begins_with(access_path):
 					continue
+				var full_access_path = UString.dot_join(access_path, c)
 				var item = create_item(const_parent)
+				class_items[full_access_path] = item
 				item.set_text(0, c)
-				
-				var type = class_obj.get_member_type(c)
-				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj)
-				item.set_icon(0, icon)
-				
-				#item.set_icon(0, MemberData.get_icon(MemberType.CONST))
-				var meta = {ParserKeys.ACCESS_PATH: access_path}
+				var meta = {ParserKeys.ACCESS_PATH: full_access_path}
 				item.set_metadata(0, meta)
+				
 				_set_collapsed(item)
-			
+				item.set_icon(0, get_item_icon_for_path(full_access_path))
+				_queue_infer_item(item, c, class_obj)
 			
 			
 			var member_names = class_obj.members.keys()
@@ -302,21 +424,20 @@ class OutlineTree extends Tree:
 				if member_type == ParserKeys.MEMBER_TYPE_FUNC or member_type == ParserKeys.MEMBER_TYPE_STATIC_FUNC:
 					continue
 				
+				var full_access_path = UString.dot_join(access_path, m)
 				var item = create_item(prop_parent)
+				class_items[full_access_path] = item
 				item.set_expand_right(0, true)
 				var item_text = m
 				if member_type == ParserKeys.MEMBER_TYPE_STATIC_VAR:
 					item_text += " [static]"
 				item.set_text(0, item_text)
 				
-				var type = class_obj.get_member_type(m)
-				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj, true)
-				item.set_icon(0, icon)
-				
-				#item.set_icon(0, MemberData.get_icon(MemberType.VAR))
-				var meta = {ParserKeys.ACCESS_PATH: access_path}
+				var meta = {ParserKeys.ACCESS_PATH: full_access_path}
 				item.set_metadata(0, meta)
 				_set_collapsed(item)
+				item.set_icon(0, get_item_icon_for_path(full_access_path))
+				_queue_infer_item(item, m, class_obj, true)
 			
 			
 			var virtual_methods = MemberData.get_virtual_methods_of_class(class_base_type)
@@ -336,7 +457,9 @@ class OutlineTree extends Tree:
 				func_names = get_sorted_methods(func_names, virtual_methods, inherited_members, static_methods)
 			
 			for f in func_names:
+				var full_access_path = UString.dot_join(access_path, f)
 				var item = create_item(func_parent)
+				class_items[full_access_path] = item
 				var func_obj = class_obj.get_function(f) as ParserFunc
 				
 				var item_tags = []
@@ -351,17 +474,15 @@ class OutlineTree extends Tree:
 					if not virtual:
 						item.set_custom_color(0, MemberData.member_var_color)
 				
-				#item.set_icon(0, MemberData.get_icon(MemberType.FUNC))
-				var type = func_obj.get_return_type()
-				var icon = MemberData.get_type_icon(type, gdscript_parser, class_obj)
-				item.set_icon(0, icon)
 				item.set_text(0, f)
 				if not item_tags.is_empty():
 					item.set_suffix(0, "[%s]" % ", ".join(item_tags))
 				
-				var meta = {ParserKeys.ACCESS_PATH: access_path, _TAGS: item_tags}
+				var meta = {ParserKeys.ACCESS_PATH: full_access_path, _TAGS: item_tags}
 				item.set_metadata(0, meta)
 				_set_collapsed(item)
+				item.set_icon(0, get_item_icon_for_path(full_access_path))
+				_queue_infer_item(item, f, class_obj, false)
 			
 			if true: # add a flag for categories?
 				if prop_parent.get_child_count() == 0:
@@ -371,13 +492,19 @@ class OutlineTree extends Tree:
 				if func_parent.get_child_count() == 0:
 					func_parent.free()
 		
+		_item_dict = class_items
 		cache_dirty = false
 		filter_items()
+		if selected_path != "null":
+			select_path(selected_path, false, false, false)
+		
+		tree_built.emit()
 		
 		if not PLUGIN_EXPORTED:
 			t.stop()
 			pass
-	
+		
+		_process_infer_queue()
 	
 	func get_sorted_methods(methods: Array, virtual: Dictionary, inherited: Dictionary, statics: Dictionary) -> Array:
 		var arr_virtual = []
@@ -413,31 +540,54 @@ class OutlineTree extends Tree:
 		var b_data = dict[b]
 		return a_data.get(ParserKeys.LINE_INDEX) < b_data.get(ParserKeys.LINE_INDEX)
 	
+	func _queue_infer_item(item:TreeItem, member_name:StringName, class_obj:ParserClass, is_instance:bool=false):
+		_infer_queue.append({
+			"item": item,
+			"name": member_name,
+			"class_obj": class_obj,
+			"is_instance": is_instance
+		})
+	
+	func _clear_infer_queue():
+		_infer_queue_processing = false
+		_infer_queue.clear()
+	
+	func _process_infer_queue():
+		_infer_queue_processing = true
+		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INFER QUEUE")
+		var count = 0
+		var gdscript_parser = EditorGDScriptParser.get_parser()
+		gdscript_parser.parse()
+		while not _infer_queue.is_empty():
+			var item_data = _infer_queue.pop_front()
+			var item = item_data.get("item")
+			if not is_instance_valid(item):
+				continue
+			
+			var member_name = item_data.get("name")
+			var class_obj = item_data.get("class_obj")
+			var access_path = UString.dot_join(class_obj.access_path, member_name)
+			var is_instance = item_data.get("is_instance")
+			var type = class_obj.get_member_type(member_name)
+			#print("INFER::", member_name, ":: -> ::", type)
+			var icon_name = MemberData.get_type_icon_name(type, gdscript_parser, class_obj, is_instance)
+			_set_item_icon(item, access_path, icon_name)
+			count += 1
+			if count % 10 == 0: # every 10, await a frame
+				await get_tree().process_frame
+		
+		print("ITEMS INFERRED::", count)
+		t.stop()
+		
+		if _infer_queue_processing: # rebuilding the tree sets this to false, so that not rebuilding with an unfinished queue
+			infer_queue_finished.emit()
+	
 	
 	func _on_item_mouse_selected(mouse_pos:Vector2, btn_idx:int):
 		var item = get_item_at_position(mouse_pos)
-		var valid_member = valid_member_item(item)
-		if not valid_member:
-			return
-		
-		var member_name = get_item_member_name(item)
-		if member_name == MemberData.get_main_script_name():
-			var code_edit = ScriptEditorRef.get_current_code_edit()
-			code_edit.set_line_as_first_visible(0)
-		
-		var class_obj = get_class_object_from_item(item)
-		if not is_instance_valid(class_obj):
-			return
-		
-		var member_data = class_obj.get_member_data(member_name)
-		if btn_idx == MOUSE_BUTTON_LEFT:
-			var line_index = member_data.get(ParserKeys.LINE_INDEX)
-			var code_edit = ScriptEditorRef.get_current_code_edit()
-			var member_type = member_data.get(ParserKeys.MEMBER_TYPE)
-			if member_type.ends_with("func") or member_type == "class":
-				code_edit.set_line_as_first_visible(line_index)
-			else:
-				code_edit.set_line_as_center_visible(line_index)
+		#if btn_idx == MOUSE_BUTTON_LEFT: # both select?
+		selected_changed.emit(true)
+		set_caret_to_member_line(item)
 	
 	
 	func filter_items():
@@ -513,7 +663,7 @@ class OutlineTree extends Tree:
 		
 		var gdscript_parser = EditorGDScriptParser.get_parser()
 		var access_path = meta.get(ParserKeys.ACCESS_PATH)
-		var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
+		var class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
 		
 		var pr = Pr.new()
 		
@@ -521,7 +671,7 @@ class OutlineTree extends Tree:
 		var member_data = class_obj.get_member(member_name)
 		var member_type = member_data.get(ParserKeys.MEMBER_TYPE) if member_data is Dictionary else "func"
 		
-		var is_main_class = member_name == MemberData.get_main_script_name()
+		var is_main_class = access_path == ""
 		
 		if is_main_class or member_type == ParserKeys.MEMBER_TYPE_CLASS:
 			var inner_access_path = ""
@@ -630,6 +780,70 @@ class OutlineTree extends Tree:
 	
 	#^ item utils
 	
+	func get_item_from_access_path(access_path:String):
+		return _item_dict.get(access_path)
+	
+	func select_path(access_path:String, scroll_tree:=false, set_caret:=false, emit_sig:=true):
+		var item = _item_dict.get(access_path)
+		if not is_instance_valid(item):
+			return false
+		#if not item.visible:
+			#return false
+		
+		deselect_all()
+		if scroll_tree:
+			var item_par = item.get_parent()
+			while is_instance_valid(item_par):
+				item_par.collapsed = false
+				item_par = item_par.get_parent()
+			scroll_to_item(item, false)
+		
+		set_selected(item, 0)
+		
+		if set_caret:
+			set_caret_to_member_line(item)
+		
+		if emit_sig:
+			selected_changed.emit(false)
+		return true
+	
+	func set_caret_to_member_line(item:TreeItem):
+		var valid_member = valid_member_item(item)
+		print("VALID::", valid_member)
+		if not valid_member:
+			return
+		var code_edit = ScriptEditorRef.get_current_code_edit()
+		var full_access_path = get_item_access_path(item)
+		if full_access_path == "":
+			code_edit.deselect()
+			code_edit.set_caret_line(0)
+			code_edit.set_caret_column(code_edit.get_line(0).length(), false)
+			code_edit.set_line_as_first_visible(0)
+			return
+		
+		var class_obj = get_class_object_from_item(item)
+		if not is_instance_valid(class_obj):
+			return
+		
+		var member_name = get_item_member_name(item)
+		var member_data = class_obj.get_member_data(member_name)
+		var line_index = member_data.get(ParserKeys.LINE_INDEX)
+		
+		code_edit.deselect()
+		code_edit.set_caret_line(line_index)
+		code_edit.set_caret_column(code_edit.get_line(line_index).length(), false)
+		
+		var member_type = member_data.get(ParserKeys.MEMBER_TYPE)
+		if member_type.ends_with("func") or member_type == ParserKeys.MEMBER_TYPE_CLASS:
+			var first_line_pos = code_edit.get_scroll_pos_for_line(line_index)
+			# offset the func or class to 25% position of code edit rather than 'set_line_as_first_visible'
+			# feels a bit more natural if the scroll is not centered or at the top
+			first_line_pos -= (code_edit.size.y / code_edit.get_line_height()) * 0.25 
+			code_edit.get_v_scroll_bar().value = first_line_pos
+		else:
+			code_edit.set_line_as_center_visible(line_index)
+	
+	
 	func get_item_member_name(item:TreeItem):
 		var text = item.get_text(0) # this is incase I want to add static or return to text
 		text = text.substr(0, text.find("[")).strip_edges()
@@ -639,16 +853,13 @@ class OutlineTree extends Tree:
 		var meta = item.get_metadata(0)
 		if meta == null:
 			return null
-		var access_path = meta.get(ParserKeys.ACCESS_PATH)
-		return access_path
+		return meta.get(ParserKeys.ACCESS_PATH)
 	
 	func get_class_object_from_item(item) -> ParserClass:
 		var access_path = get_item_access_path(item)
 		if access_path == null:
 			return null
-		var gdscript_parser = EditorGDScriptParser.get_parser()
-		var class_obj = gdscript_parser.get_class_object(access_path)
-		return class_obj
+		return MemberData.get_class_obj_from_access_path(access_path)
 	
 	func valid_member_item(item:TreeItem):
 		var meta = item.get_metadata(0)
@@ -656,22 +867,33 @@ class OutlineTree extends Tree:
 			return true # non category items with metadata are valid
 		return false
 	
+	
+	func _set_item_icon(item:TreeItem, access_path:String, icon_name:StringName):
+		var access_path_data = current_script_item_data.get_or_add(access_path, {})
+		access_path_data[MemberData.LAST_ICON] = icon_name
+		item.set_icon(0, _editor_theme.get_icon(icon_name, _ED_ICONS))
+	
+	func get_item_icon_for_path(access_path:String):
+		var icon_name = current_script_item_data.get_or_add(access_path, {}).get(MemberData.LAST_ICON, &"Nil")
+		return _editor_theme.get_icon(icon_name, _ED_ICONS)
+	
 	func _set_collapsed(item:TreeItem, default:=false):
 		var access_path = get_item_access_path(item)
-		var _name = get_item_member_name(item)
 		var access_path_data = current_script_item_data.get_or_add(access_path, {})
-		item.collapsed = access_path_data.get(_name, default)
+		item.collapsed = access_path_data.get(MemberData.COLLAPSED, default)
 	
 	func _on_item_collapsed(item:TreeItem):
 		if is_filtering:
 			return
 		var access_path = get_item_access_path(item)
-		var _name = get_item_member_name(item)
 		var access_path_data = current_script_item_data.get_or_add(access_path, {})
-		access_path_data[_name] = item.collapsed
+		access_path_data[MemberData.COLLAPSED] = item.collapsed
 
 
 class MemberData:
+	
+	const COLLAPSED = &"collapsed"
+	const LAST_ICON = &"last_icon"
 	
 	static var base_type_color:Color
 	static var global_function_color:Color
@@ -695,22 +917,22 @@ class MemberData:
 	static func is_a_gdscript_file(file_path:String):
 		return GDScriptParser.Utils.is_gdscript_path(file_path)
 	
-	static func get_type_icon(type:String, gdscript_parser:GDScriptParser, current_class_obj:ParserClass, is_instance:=false) -> Texture2D:
+	static func get_type_icon_name(type:String, gdscript_parser:GDScriptParser, current_class_obj:ParserClass, is_instance:=false) -> StringName:
 		#print("GET ICON::", type)
 		var editor_theme = EditorInterface.get_editor_theme()
 		if type.is_empty():
-			return editor_theme.get_icon(&"Nil", _ED_ICONS)
+			return &"Nil"
 		elif type == &"void":
-			return editor_theme.get_icon(&"Nil", _ED_ICONS)
+			return &"Nil"
 		
 		if type.is_absolute_path():
 			if not is_a_gdscript_file(type):
 				var ext = type.get_extension()
 				match ext:
-					"tscn": return editor_theme.get_icon(&"PackedScene", _ED_ICONS)
-				return editor_theme.get_icon(&"Variant", _ED_ICONS)
+					"tscn": return &"PackedScene"
+				return &"Variant"
 			elif type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
-				return editor_theme.get_icon(&"Enum", _ED_ICONS)
+				return &"Enum"
 				
 			else:
 				#print("ERROR TYPE::", type)
@@ -725,10 +947,10 @@ class MemberData:
 						icon_name = &"GDScript"
 					else:
 						icon_name = &"GDScriptInternal"
-				return editor_theme.get_icon(icon_name, _ED_ICONS)
+				return icon_name
 		else:
 			if editor_theme.has_icon(type, _ED_ICONS):
-				return editor_theme.get_icon(type, _ED_ICONS)
+				return type
 			
 			var member_type = current_class_obj.get_class_member_type(type, true)
 			if member_type == "" and type.contains("."):
@@ -738,24 +960,9 @@ class MemberData:
 				member_type = GDScriptParser.TypeLookup.get_class_member_type(front, back, true)
 			
 			if member_type != "" and editor_theme.has_icon(member_type, _ED_ICONS):
-				return editor_theme.get_icon(member_type, _ED_ICONS)
+				return member_type
 			
-			return editor_theme.get_icon(&"Variant", _ED_ICONS)
-	
-	
-	static func get_icon(member_type:MemberType):
-		var icon_name:String
-		match member_type:
-			MemberType.VAR: icon_name = &"MemberProperty"
-			MemberType.STATIC_VAR: icon_name = &"MemberProperty"
-			MemberType.FUNC: icon_name = &"MemberMethod"
-			MemberType.STATIC_FUNC: icon_name = &"MemberMethod"
-			MemberType.CONST: icon_name = &"MemberConstant"
-			MemberType.ENUM: icon_name = &"Enum"
-			MemberType.CLASS: icon_name = &"Object"
-			MemberType.SIGNAL: icon_name = &"MemberSignal"
-		
-		return EditorInterface.get_editor_theme().get_icon(icon_name, _ED_ICONS)
+			return &"Variant"
 	
 	
 	static func get_main_script_name():
@@ -763,6 +970,14 @@ class MemberData:
 		if gdscript_parser.get_global_class_name() != "":
 			return gdscript_parser.get_global_class_name()
 		return gdscript_parser.get_script_path().get_file()
+	
+	static func get_class_obj_from_access_path(access_path:String):
+		var class_access = ""
+		if access_path.contains("."):
+			class_access = UString.trim_member_access_back(access_path)
+		var gdscript_parser = EditorGDScriptParser.get_parser()
+		var class_obj = gdscript_parser.get_class_object(class_access)
+		return class_obj
 	
 	static func trim_file_path(path: String, parser: GDScriptParser) -> String:
 		var main_script_path = parser.get_script_path()
@@ -833,3 +1048,41 @@ class MemberData:
 			script_base_type = "Could not find"
 		pr.new_line().append("Base Type: ").append(script_base_type, base_type_color)
 		return pr
+	
+	
+	static func get_current_access_path():
+		var code_edit = ScriptEditorRef.get_current_code_edit()
+		if not is_instance_valid(code_edit):
+			return "null"
+		var line = code_edit.get_caret_line()
+		var current_parser = EditorGDScriptParser.get_parser()
+		var current_class = current_parser.get_class_at_line(line)
+		var current_func = current_parser.get_function_at_line(line)
+		
+		var current_access_path = current_class
+		if current_func != GDScriptParser.Keys.CLASS_BODY:
+			current_access_path = UString.dot_join(current_class, current_func)
+		else:
+			var found = false
+			var class_obj = current_parser.get_class_object(current_class) as GDScriptParser.ParserClass
+			for c in class_obj.constants:
+				var data = class_obj.constants[c]
+				var dec_line = data.get(ParserKeys.LINE_INDEX)
+				if dec_line == line:
+					current_access_path = UString.dot_join(current_class, c)
+					found = true
+					break
+			if not found:
+				for m in class_obj.members:
+					var data = class_obj.members[m]
+					var dec_line = data.get(ParserKeys.LINE_INDEX)
+					if dec_line == line:
+						current_access_path = UString.dot_join(current_class, m)
+						found = true
+						break
+		
+		#prints(current_access_path)
+		return current_access_path
+
+class EditorSet:
+	const FOLLOW_CURSOR = &"plugin/script_outline/follow_cursor"
