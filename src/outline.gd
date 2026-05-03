@@ -225,7 +225,12 @@ func _build_breadcrumb(current_access_path:String="null"):
 		return
 	
 	if keep_tabs:
-		_bread_crumb_tabs.current_tab = current_tab
+		for i in range(_bread_crumb_tabs.tab_count):
+			var ap = _bread_crumb_tabs.get_tab_metadata(i)
+			if ap == current_access_path:
+				_bread_crumb_tabs.current_tab = i
+				break
+		#_bread_crumb_tabs.current_tab = current_tab
 	else:
 		_bread_crumb_tabs.clear_tabs()
 		
@@ -259,11 +264,13 @@ func _get_selected_breadcrumb(longest:bool=false) -> String:
 func _set_current_access_path(build:=false):
 	var selected = _get_selected_breadcrumb()
 	var current_access_path = MemberData.get_current_access_path(outline_tree._item_dict)
+	prints("SEL::", selected, "::CURR::", current_access_path)
 	if build:
 		_build_breadcrumb(current_access_path)
 	if current_access_path == "null" or selected == current_access_path:
 		return
 	if _follow_cursor:
+		
 		outline_tree.select_path(current_access_path, true, false)
 
 
@@ -505,16 +512,20 @@ class OutlineTree extends Tree:
 					_queue_infer_item(arg_item, arg_access_path, arg_name, class_obj, true, func_dec_line)
 				
 				for lv_dec_line in func_obj.local_vars.keys():
-					var lv_data = func_obj.local_vars[lv_dec_line]
-					var lv_name = lv_data.get(ParserKeys.MEMBER_NAME)
-					var lv_access_path = MemberData.get_lv_access_path(class_items, UString.dot_join(full_access_path, lv_name))
-					var lv_item = create_item(item)
+					var lv_data:Dictionary = func_obj.local_vars[lv_dec_line]
+					var lv_name:String = lv_data.get(ParserKeys.MEMBER_NAME)
+					var lv_member_type:StringName = lv_data.get(ParserKeys.MEMBER_TYPE)
+					var lv_access_path:String = MemberData.get_lv_access_path(class_items, UString.dot_join(full_access_path, lv_name))
+					var lv_item:TreeItem = create_item(item)
 					class_items[lv_access_path] = lv_item
-					lv_item.set_text(0, lv_name)
+					var display_name = lv_name
+					if lv_member_type == ParserKeys.MEMBER_TYPE_FOR:
+						display_name = lv_name + " [for loop]"
+					lv_item.set_text(0, display_name)
 					lv_item.set_icon(0, get_item_icon_for_path(lv_access_path))
 					
 					# this will need a column to if their are multiple in line?
-					var lv_meta = {
+					var lv_meta:Dictionary = {
 						ParserKeys.ACCESS_PATH: lv_access_path,
 						Keys.LINE_IDX: lv_dec_line,
 						Keys.IS_LOCAL: true
@@ -547,10 +558,10 @@ class OutlineTree extends Tree:
 		_process_infer_queue()
 	
 	func get_sorted_methods(methods: Array, virtual: Dictionary, inherited: Dictionary, statics: Dictionary) -> Array:
-		var arr_virtual = []
-		var arr_inherited = []
-		var arr_static = []
-		var arr_other = []
+		var arr_virtual:Array = []
+		var arr_inherited:Array = []
+		var arr_static:Array = []
+		var arr_other:Array = []
 		
 		for m in methods:
 			if virtual.has(m):
@@ -568,7 +579,7 @@ class OutlineTree extends Tree:
 			arr_static.sort()
 			arr_other.sort()
 		
-		var result = []
+		var result:Array = []
 		result.append_array(arr_virtual)
 		result.append_array(arr_inherited)
 		result.append_array(arr_static)
@@ -597,8 +608,8 @@ class OutlineTree extends Tree:
 	func _process_infer_queue():
 		_infer_queue_processing = true
 		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INFER QUEUE")
-		var count = 0
-		var gdscript_parser = EditorGDScriptParser.get_parser()
+		var count:int = 0
+		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
 		gdscript_parser.parse()
 		while not _infer_queue.is_empty():
 			var item_data:Dictionary = _infer_queue.pop_front()
@@ -617,10 +628,13 @@ class OutlineTree extends Tree:
 				type = class_obj.get_member_type(member_name)
 			else:
 				var func_obj:ParserFunc = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
+				if not func_obj:
+					printerr("Outline-631--Could not get func obj::",access_path)
+					continue
 				type = func_obj.get_local_var_type(line_index, member_name)
 			
 			#print("INFER::", member_name, ":: -> ::", type)
-			var icon_name = MemberData.get_type_icon_name(type, gdscript_parser, class_obj, is_instance)
+			var icon_name:StringName = MemberData.get_type_icon_name(type, gdscript_parser, class_obj, is_instance)
 			_set_item_icon(item, access_path, icon_name)
 			count += 1
 			if count % 10 == 0: # every 10, await a frame
@@ -651,7 +665,7 @@ class OutlineTree extends Tree:
 		if current_filter_text == "" and last_filter_text == "":
 			return
 		last_filter_text = current_filter_text
-		var item = get_root()
+		var item:TreeItem = get_root()
 		if current_filter_text == "":
 			while is_instance_valid(item):
 				item.visible = true
@@ -665,7 +679,7 @@ class OutlineTree extends Tree:
 		var func_items := []
 		var cat_items := []
 		while is_instance_valid(item):
-			var meta = item.get_metadata(0)
+			var meta:Variant = item.get_metadata(0)
 			if meta == null:
 				pass
 			elif meta.get(_CLASS) == true:
@@ -676,31 +690,31 @@ class OutlineTree extends Tree:
 				if meta.get(_FUNC) == true:
 					func_items.append(item)
 				
-				var text = item.get_text(0)
+				var text:String = item.get_text(0)
 				item.visible = current_filter_text.is_subsequence_ofn(text)
 			
 			item = item.get_next_in_tree()
 		
-		for func_item in func_items:
+		for func_item:TreeItem in func_items:
 			if func_item.visible:
 				continue
-			for c in func_item.get_children():
+			for c:TreeItem in func_item.get_children():
 				if c.visible:
 					func_item.collapsed = false
 					func_item.visible = true
 			pass
 		
-		for cat_item in cat_items:
+		for cat_item:TreeItem in cat_items:
 			cat_item.visible = false
-			for c in cat_item.get_children():
+			for c:TreeItem in cat_item.get_children():
 				if c.visible:
 					cat_item.collapsed = false
 					cat_item.visible = true
 					break
 		
-		for class_item in class_items:
+		for class_item:TreeItem in class_items:
 			class_item.visible = false
-			for c in class_item.get_children():
+			for c:TreeItem in class_item.get_children():
 				if c.visible:
 					class_item.collapsed = false
 					class_item.visible = true
@@ -717,7 +731,7 @@ class OutlineTree extends Tree:
 		
 		MemberData.set_colors()
 		
-		var meta = item.get_metadata(0)
+		var meta:Dictionary = item.get_metadata(0)
 		
 		var panel = PanelContainer.new()
 		var vbox = VBoxContainer.new()
@@ -758,7 +772,7 @@ class OutlineTree extends Tree:
 				return
 		
 		var pr = Pr.new()
-		var member_type = member_data.get(ParserKeys.MEMBER_TYPE) if member_data is Dictionary else "func"
+		var member_type:String = member_data.get(ParserKeys.MEMBER_TYPE) if member_data is Dictionary else "func"
 		var is_main_class = access_path == ""
 		
 		if is_main_class or member_type == ParserKeys.MEMBER_TYPE_CLASS:
@@ -772,7 +786,7 @@ class OutlineTree extends Tree:
 			return panel
 		
 		if member_data is ParserFunc:
-			var tags = meta.get(_TAGS, "")
+			var tags = meta.get(_TAGS, [])
 			if not tags.is_empty():
 				pr.append("[ ")
 				for i in range(tags.size()):
@@ -816,7 +830,7 @@ class OutlineTree extends Tree:
 			
 			
 			pr.new_line().append("Return: ")
-			#if ret_type.begins_with("res://"):
+			
 			if ret_type.is_absolute_path():
 				ret_type = MemberData.trim_file_path(ret_type, gdscript_parser)
 			pr.append(ret_type, MemberData.base_type_color)
@@ -847,7 +861,7 @@ class OutlineTree extends Tree:
 			if not type.is_absolute_path():
 				pr.append(type, MemberData.base_type_color)
 			else:
-				var script_data = UString.get_script_path_and_suffix(type)
+				var script_data = GDScriptParser.Utils.type_path_get_script_data(type)
 				var script = load(script_data[0]) as GDScript
 				var class_access_path = script_data[1]
 				if script.get_global_name() != "":
@@ -915,7 +929,7 @@ class OutlineTree extends Tree:
 			selected_changed.emit(false)
 		return true
 	
-	func set_caret_to_member_line(item:TreeItem):
+	func set_caret_to_member_line(item:TreeItem, auto_scroll:=true):
 		var valid_member = valid_member_item(item)
 		print("VALID::", valid_member)
 		if not valid_member:
@@ -926,7 +940,8 @@ class OutlineTree extends Tree:
 			code_edit.deselect()
 			code_edit.set_caret_line(0)
 			code_edit.set_caret_column(code_edit.get_line(0).length(), false)
-			code_edit.set_line_as_first_visible(0)
+			if not code_edit.is_caret_visible() or not auto_scroll:
+				code_edit.set_line_as_first_visible(0)
 			return
 		
 		var member_name = get_item_member_name(item)
@@ -961,6 +976,8 @@ class OutlineTree extends Tree:
 		code_edit.deselect()
 		code_edit.set_caret_line(line_index)
 		code_edit.set_caret_column(code_edit.get_line(line_index).length(), false)
+		if auto_scroll and code_edit.is_caret_visible():
+			return
 		
 		var member_type = member_data.get(ParserKeys.MEMBER_TYPE, "")
 		if member_type.ends_with("func") or member_type == ParserKeys.MEMBER_TYPE_CLASS:
@@ -1049,10 +1066,29 @@ class MemberData:
 	static func get_type_icon_name(type:String, gdscript_parser:GDScriptParser, current_class_obj:ParserClass, is_instance:=false) -> StringName:
 		#print("GET ICON::", type)
 		var editor_theme = EditorInterface.get_editor_theme()
+		
+		is_instance = type.ends_with(ParserKeys.INS_DELIM) or GDScriptParser.BuiltInChecker.is_variant_type(type)
+		
+		var delim_check = GDScriptParser.Utils.type_path_get_type(type, true)
+		if delim_check != "":
+			type = delim_check
+		else:
+			type = type.trim_suffix(ParserKeys.INS_DELIM)
+		
 		if type.is_empty():
-			return &"Nil"
+			return &"MissingNode"
+			return &"Variant"
 		elif type == &"void":
 			return &"Nil"
+		
+		
+		#if type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
+			#return &"Enum"
+		#elif type.ends_with(GDScriptParser.Keys.CALLABLE_SUFFIX):
+			#return &"Callable"
+		#elif type.ends_with(GDScriptParser.Keys.SIGNAL_SUFFIX):
+			#return &"Signal"
+		
 		
 		if type.is_absolute_path():
 			if not is_a_gdscript_file(type):
@@ -1060,8 +1096,7 @@ class MemberData:
 				match ext:
 					"tscn": return &"PackedScene"
 				return &"Variant"
-			elif type.ends_with(ParserKeys.ENUM_PATH_SUFFIX):
-				return &"Enum"
+			
 				
 			else:
 				#print("ERROR TYPE::", type)
@@ -1078,6 +1113,10 @@ class MemberData:
 						icon_name = &"GDScriptInternal"
 				return icon_name
 		else:
+			if type.begins_with("Array["):
+				type = "Array"
+			elif type.begins_with("Dictionary["):
+				type = "Dictionary"
 			if editor_theme.has_icon(type, _ED_ICONS):
 				return type
 			
@@ -1119,6 +1158,7 @@ class MemberData:
 		return class_obj
 	
 	static func trim_file_path(path: String, parser: GDScriptParser) -> String:
+		return path
 		var main_script_path = parser.get_script_path()
 		if path.begins_with(main_script_path):
 			var access_path = path.trim_prefix(main_script_path).trim_prefix(".")
@@ -1191,6 +1231,77 @@ class MemberData:
 		pr.new_line().append("Line", MemberData.keyword_color).append(": ", MemberData.symbol_color).append("%s" % c_line)
 		return pr
 	
+	#static func get_current_access_path(items_dict:Dictionary):
+		#var code_edit = ScriptEditorRef.get_current_code_edit()
+		#if not is_instance_valid(code_edit):
+			#return "null"
+		#var line = code_edit.get_caret_line()
+		#var current_line_text = code_edit.get_line(line)
+		#var current_parser = EditorGDScriptParser.get_parser()
+		#
+		#var caret_context = current_parser.get_caret_context()
+		#var code_context_stripped = caret_context.code_context_stripped
+		#
+		#var my_dict = {
+			#
+			#
+			#
+		#}
+		#
+		#var current_class = caret_context.current_class
+		#var class_obj = caret_context.get_current_class_object() as GDScriptParser.ParserClass
+		#var current_func = caret_context.current_function
+		#prints("CLS::", current_class, "::FUNC::", current_func)
+		#var current_access_path = current_class
+		#if current_func != GDScriptParser.Keys.CLASS_BODY:
+			#current_access_path = UString.dot_join(current_class, current_func)
+			#if GDScriptParser.Utils.line_has_any_declaration(code_context_stripped) or code_context_stripped.begins_with("for "):
+				#if not is_instance_valid(class_obj):
+					#return current_access_path
+				#var func_obj = class_obj.get_function(current_func)
+				#if is_instance_valid(func_obj):
+					#var member_data = func_obj.local_vars.get(line)
+					#if member_data:
+						#var member_name = member_data.get(ParserKeys.MEMBER_NAME)
+						#current_access_path = UString.dot_join(current_access_path, member_name)
+						#var temp_ap = current_access_path
+						#var found = false
+						#var count = 1
+						#while items_dict.has(current_access_path):
+							#var item = items_dict[current_access_path]
+							#var meta = item.get_metadata(0)
+							#var line_idx = meta.get(Keys.LINE_IDX, -1)
+							#if line_idx == line:
+								#found = true
+								#break
+							#current_access_path = temp_ap + "%%" + str(count)
+							#count += 1
+						#
+						#if not found:
+							#return "null"
+						#return current_access_path
+			#print("HERER")
+			#
+		#else:
+			#var found = false
+			#for c in class_obj.constants:
+				#var data = class_obj.constants[c]
+				#var dec_line = data.get(ParserKeys.LINE_INDEX)
+				#if dec_line == line:
+					#current_access_path = UString.dot_join(current_class, c)
+					#found = true
+					#break
+			#if not found:
+				#for m in class_obj.members:
+					#var data = class_obj.members[m]
+					#var dec_line = data.get(ParserKeys.LINE_INDEX)
+					#if dec_line == line:
+						#current_access_path = UString.dot_join(current_class, m)
+						#found = true
+						#break
+		#
+		#prints("END AP::", current_access_path)
+		#return current_access_path
 	
 	static func get_current_access_path(items_dict:Dictionary):
 		var code_edit = ScriptEditorRef.get_current_code_edit()
@@ -1199,14 +1310,17 @@ class MemberData:
 		var line = code_edit.get_caret_line()
 		var current_line_text = code_edit.get_line(line)
 		var current_parser = EditorGDScriptParser.get_parser()
+		
 		var current_class = current_parser.get_class_at_line(line)
 		var class_obj = current_parser.get_class_object(current_class) as GDScriptParser.ParserClass
 		var current_func = current_parser.get_function_at_line(line)
-		
+		prints("CLS::", current_class, "::FUNC::", current_func)
 		var current_access_path = current_class
 		if current_func != GDScriptParser.Keys.CLASS_BODY:
 			current_access_path = UString.dot_join(current_class, current_func)
 			if GDScriptParser.Utils.line_has_any_declaration(current_line_text.strip_edges()):
+				if not is_instance_valid(class_obj):
+					return current_access_path
 				var func_obj = class_obj.get_function(current_func)
 				if is_instance_valid(func_obj):
 					var member_data = func_obj.local_vars.get(line)
@@ -1229,6 +1343,7 @@ class MemberData:
 						if not found:
 							return "null"
 						return current_access_path
+			print("HERER")
 			
 		else:
 			var found = false
@@ -1248,7 +1363,7 @@ class MemberData:
 						found = true
 						break
 		
-		#prints(current_access_path)
+		prints("END AP::", current_access_path)
 		return current_access_path
 	
 	static func get_lv_access_path(item_dict:Dictionary, item_access_path:String):
