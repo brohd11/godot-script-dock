@@ -4,8 +4,10 @@ const PLUGIN_EXPORTED = false
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
+
 const PathBar = ALibEditor.UIHelpers.Tab.PathBar
 
+const TagParser = ALibEditor.Singletons.TagParser
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const GDScriptParser = EditorGDScriptParser.GDScriptParser
@@ -21,6 +23,8 @@ const UClassDetail = UtilsRemote.UClassDetail
 
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
+
+const QUEUE_PER_FRAME = 5
 
 const _ED_ICONS = &"EditorIcons"
 
@@ -622,22 +626,51 @@ class OutlineTree extends Tree:
 			var class_obj:ParserClass = item_data.get(Keys.CLASS_OBJ)
 			var is_instance:bool = item_data.get(Keys.IS_INSTANCE)
 			var line_index:int = item_data.get(Keys.LINE_IDX, -1)
-			
+			var is_local = false
 			var type:String
-			if line_index == -1:
+			if line_index == -1: # no line index means class member, only because I am not passing via item
+				var member_data = class_obj.get_member_data(member_name)
+				line_index = member_data.get(ParserKeys.LINE_INDEX)
 				type = class_obj.get_member_type(member_name)
 			else:
+				is_local = true
 				var func_obj:ParserFunc = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
 				if not func_obj:
 					printerr("Outline-631--Could not get func obj::",access_path)
 					continue
 				type = func_obj.get_local_var_type(line_index, member_name)
 			
+			#var type_rich = gdscript_parser.resolve_expression_to_type_rich(member_name, line_index)
+			#if GDScriptParser.Utils.is_absolute_path(type_rich.origin):
+			
+			var type_data = gdscript_parser.get_code_edit_parser().get_type_from_line(line_index)
+			if type_data and type_data.get(ParserKeys.TYPE) == "var":
+				var type_array = type_data.get("result")
+				var assignment = type_array[2]
+				var tag_parser = TagParser.get_tag_parser("keys")
+				if not tag_parser:
+					printerr("CAN NOT GET TAG PARSER")
+				if tag_parser:
+					var adjusted_string = tag_parser.resolve_tagged_expression(assignment, line_index)
+					if adjusted_string:
+						type = gdscript_parser.resolve_expression_to_type(adjusted_string, line_index)
+						#print("ADJ STRING::TYPE", member_name, "::", adjusted_string, " -> ", type)
+			
+			
+			
+			
+			
+			#TEST
+			var old_type = current_script_item_data.get(access_path).get("TEST_TYPE", "")
+			if old_type and old_type != type:
+				printerr("TYPECHANGED::", "L:", line_index, ":", access_path, " - ", old_type, " -> ", type)
+			current_script_item_data[access_path]["TEST_TYPE"] = type
+			#TEST
 			#print("INFER::", member_name, ":: -> ::", type)
 			var icon_name:StringName = MemberData.get_type_icon_name(type, gdscript_parser, class_obj, is_instance)
 			_set_item_icon(item, access_path, icon_name)
 			count += 1
-			if count % 10 == 0: # every 10, await a frame
+			if count % QUEUE_PER_FRAME == 0: # every x amount, await a frame
 				await get_tree().process_frame
 		
 		# clear erased members
@@ -753,6 +786,21 @@ class OutlineTree extends Tree:
 		
 		var member_name = get_item_member_name(item)
 		
+		var type_data = gdscript_parser.get_code_edit_parser().get_type_from_line(line_idx)
+		if type_data and type_data.get(ParserKeys.TYPE) == "var" and member_name == "my_color":
+			var type_array = type_data.get("result")
+			var assignment = type_array[2]
+			print("ADJ STRING::ASSIGN::", assignment)
+			var tag_parser = TagParser.get_tag_parser("keys")
+			if not tag_parser:
+				printerr("CAN NOT GET TAG PARSER")
+			if tag_parser:
+				var adjusted_string = tag_parser.resolve_tagged_expression(assignment, line_idx)
+				if adjusted_string:
+					var type = gdscript_parser.resolve_expression_to_type(adjusted_string, line_idx)
+					printerr("ADJ STRING::TYPE", member_name, "::", adjusted_string, " -> ", type)
+			
+		
 		var class_obj:ParserClass
 		var member_data
 		if not is_local:
@@ -864,7 +912,7 @@ class OutlineTree extends Tree:
 				var script_data = GDScriptParser.Utils.type_path_get_script_data(type)
 				var script = load(script_data[0]) as GDScript
 				var class_access_path = script_data[1]
-				if script.get_global_name() != "":
+				if script.get_global_name() != "" and not true: #ALERT Temp flag
 					pr.append(script.get_global_name(), MemberData.user_type_color)
 					if class_access_path != "":
 						pr.append(".", MemberData.symbol_color)
