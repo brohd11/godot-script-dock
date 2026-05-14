@@ -44,6 +44,7 @@ var right_click_handler:RightClickHandler
 var _debounce_timer:Timer
 
 var _vbox:VBoxContainer
+var header_button:Button
 var toolbar:HBoxContainer
 var filter_line_edit:LineEdit
 var _bread_crumb_tabs:PathBar
@@ -59,16 +60,21 @@ var _caret_changed_debounce:bool=false
 var _last_caret_line:int = -1
 var _follow_cursor:bool = false
 
+signal header_button_pressed
 
 func get_dock_data() -> Dictionary:
 	var data = {}
+	data[OutlineKeys.DOCK_OUTLINE_VIS] = outline_tree.visible
 	return data
 
 func set_dock_data(data:Dictionary) -> void:
 	_dock_data = data
-
+	var outline_vis = _dock_data.get(OutlineKeys.DOCK_OUTLINE_VIS, true)
+	if not outline_vis: # emit the signal because the sidebar needs to set it's settings
+		header_button_pressed.emit()
 
 func _ready() -> void:
+	print("READY IN OUTLINE")
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
 	
 	#ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
@@ -84,6 +90,29 @@ func _ready() -> void:
 	
 	_vbox = VBoxContainer.new()
 	add_child(_vbox)
+	
+	header_button = Button.new()
+	header_button.text = "Outline"
+	header_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header_button.theme_type_variation = &"FlatButton"
+	header_button.pressed.connect(func():header_button_pressed.emit())
+	header_button.icon = EditorInterface.get_editor_theme().get_icon(&"GuiTreeArrowDown", &"EditorIcons")
+	_vbox.add_child(header_button)
+	
+	header_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	
+	var existing = header_button.get_theme_stylebox("normal")
+	var sb = EditorInterface.get_editor_theme().get_stylebox("normal", "Button").duplicate() as StyleBoxFlat
+	sb.content_margin_bottom = existing.content_margin_bottom
+	sb.content_margin_left = existing.content_margin_left
+	sb.content_margin_right = existing.content_margin_right
+	sb.content_margin_top = existing.content_margin_top
+	sb.bg_color = UtilsRemote.EditorColors.get_theme_color(UtilsRemote.EditorColors.ThemeColor.DARK_1)
+	
+	sb.border_color = sb.bg_color.lightened(0.15)
+	header_button.add_theme_stylebox_override("normal", sb)
+	
+	
 	
 	
 	_bread_crumb_tabs = PathBar.new()
@@ -136,6 +165,24 @@ func clean_up():
 
 func get_margins():
 	return [self]
+
+func toggle_outline():
+	var new_state = not outline_tree.visible
+	_toggle_outline(new_state)
+	return new_state
+
+func _toggle_outline(state:bool):
+	for cont in [toolbar, _bread_crumb_tabs, outline_tree]:
+		cont.visible = state
+	
+	if state:
+		size_flags_vertical = Control.SIZE_EXPAND_FILL
+		header_button.icon = EditorInterface.get_editor_theme().get_icon(&"GuiTreeArrowDown", &"EditorIcons")
+		_set_cache_dirty()
+		_build_tree()
+	else:
+		size_flags_vertical = Control.SIZE_SHRINK_END
+		header_button.icon = EditorInterface.get_editor_theme().get_icon(&"GuiTreeArrowRight", &"EditorIcons")
 
 
 func get_options():
@@ -360,6 +407,8 @@ class OutlineTree extends Tree:
 	
 	
 	func build_tree():
+		if not visible:
+			return
 		if not cache_dirty:
 			return
 		
@@ -1620,6 +1669,8 @@ class MemberData:
 		
 		var line = code_edit.get_caret_line()
 		var current_parser = EditorGDScriptParser.get_parser()
+		if not is_instance_valid(current_parser):
+			return "null"
 		var code_edit_parser = current_parser.get_code_edit_parser()
 		if not is_instance_valid(code_edit_parser.code_edit):
 			#print("ACCESS NO CODE EDIT PARSER")
@@ -1705,6 +1756,7 @@ class OutlineKeys:
 	const ITEM_TYPE_LOCAL_VAR = &"local_var"
 	const ITEM_TYPE_CATEGORY = &"category"
 	
+	const DOCK_OUTLINE_VIS = &"dock_outline_vis"
 	
 
 class EditorSet:

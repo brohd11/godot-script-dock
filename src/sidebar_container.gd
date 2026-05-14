@@ -67,9 +67,9 @@ func _init():
 	add_child(script_container)
 	script_container.right_click_handler = right_click_handler
 	
-	
 	script_outline = ScriptOutline.new()
 	add_child(script_outline)
+	script_outline.header_button_pressed.connect(_on_outline_header_button_pressed)
 	script_outline.right_click_handler = right_click_handler
 	
 	_ui_controls = [script_container, script_outline]
@@ -196,6 +196,10 @@ func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
 	
 	set_margins(to_sidebar)
 
+func _on_outline_header_button_pressed():
+	var vis_state = script_outline.toggle_outline()
+	collapsed = not vis_state
+	dragging_enabled = vis_state
 
 func set_margins(sidebar:bool):
 	var val = -2
