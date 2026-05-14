@@ -6,6 +6,7 @@ const TreeHelperBase = preload("res://addons/addon_lib/brohd/alib_runtime/tree_h
 
 const PluginButton = preload("res://addons/addon_lib/brohd/alib_editor/ui/button/button_helper.gd").PluginButton #! resolve ALibEditor.UIHelpers.Buttons.PluginButton
 const TabBarContainer = preload("res://addons/addon_lib/brohd/alib_editor/ui/tab/tab_bar_container.gd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
+const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.PathBar
 
 const SettingHelperEditor = preload("uid://c4l4v4eufkmtx") #! resolve ALibEditor.Settings.SettingHelperEditor
 
@@ -21,6 +22,7 @@ const LineSubmit = preload("res://addons/addon_lib/brohd/alib_runtime/dialog/lin
 const EditorColors = preload("res://addons/addon_lib/brohd/alib_editor/misc/colors/editor_colors.gd") #! resolve ALibEditor.Colors
 const EditorIcons = preload("res://addons/addon_lib/brohd/alib_editor/misc/icons/editor_icons.gd") #! resolve ALibEditor.Singletons.EditorIcons
 const ScriptListManager = preload("res://addons/addon_lib/brohd/alib_editor/misc/script_list/script_list_manager.gd") #! resolve ALibEditor.Singletons.ScriptListManager
+const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singletons.TagParser
 
 const RightClickHandler = preload("res://addons/addon_lib/brohd/gui_click_handler/right_click_handler.gd") #! resolve ClickHandlers.RightClickHandler
 const Options = preload("res://addons/addon_lib/brohd/alib_runtime/popup_menu/popup_options.gd") #! resolve ALibRuntime.Popups.Options
