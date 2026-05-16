@@ -107,12 +107,10 @@ func _ready() -> void:
 	sb.content_margin_left = existing.content_margin_left
 	sb.content_margin_right = existing.content_margin_right
 	sb.content_margin_top = existing.content_margin_top
-	sb.bg_color = UtilsRemote.EditorColors.get_theme_color(UtilsRemote.EditorColors.ThemeColor.DARK_1)
+	sb.bg_color = EditorColors.get_theme_color(EditorColors.ThemeColor.DARK_1)
 	
 	sb.border_color = sb.bg_color.lightened(0.15)
 	header_button.add_theme_stylebox_override("normal", sb)
-	
-	
 	
 	
 	_bread_crumb_tabs = PathBar.new()
@@ -740,10 +738,11 @@ class OutlineTree extends Tree:
 	
 	func _process_infer_queue() -> void:
 		_infer_queue_processing = true
-		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INFER QUEUE")
+		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INFER QUEUE TOTAL")
+		
+		#var tree_font_color:Color = _editor_theme.get_color("font_color", "Tree")
 		
 		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
-		var tree_font_color:Color = _editor_theme.get_color("font_color", "Tree")
 		var count:int = 0
 		
 		# pseudo setting
@@ -760,6 +759,9 @@ class OutlineTree extends Tree:
 		#gdscript_parser.parse()
 		# TEST
 		
+		var inc_t = ALibRuntime.Utils.UProfile.TimeFunction.new("Infer Queue", ALibRuntime.Utils.UProfile.TimeFunction.TimeScale.USEC, false)
+		inc_t.iterations = 50
+		inc_t.start()
 		while not _infer_queue.is_empty():
 			var item_data:Dictionary = _infer_queue.pop_front()
 			var item:TreeItem = item_data.get(OutlineKeys.ITEM)
@@ -879,7 +881,7 @@ class OutlineTree extends Tree:
 			
 			_set_item_persistent_data(access_path, params)
 			_set_item_params_from_persistent_data(item, access_path)
-			
+			inc_t.stop("", true)
 			count += 1
 			if count % QUEUE_PER_FRAME == 0: # every x amount, await a frame
 				await get_tree().process_frame
@@ -1467,7 +1469,7 @@ class MemberData:
 				var dot = type.find(".")
 				var front = type.substr(0, dot)
 				var back = type.substr(dot + 1)
-				member_type = GDScriptParser.TypeLookup.get_class_member_type(front, back, true)
+				member_type = GDScriptParser.TypeLookup.get_class_member_type(front, back)
 			
 			if member_type != "":
 				if editor_theme.has_icon(member_type, _ED_ICONS):
