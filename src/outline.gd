@@ -881,7 +881,8 @@ class OutlineTree extends Tree:
 			
 			_set_item_persistent_data(access_path, params)
 			_set_item_params_from_persistent_data(item, access_path)
-			inc_t.stop("", true)
+			
+			#inc_t.stop("", true)
 			count += 1
 			if count % QUEUE_PER_FRAME == 0: # every x amount, await a frame
 				await get_tree().process_frame
@@ -892,9 +893,8 @@ class OutlineTree extends Tree:
 			if not _item_dict.has(access_path):
 				current_script_item_data.erase(access_path)
 		
-		print("ITEMS INFERRED::", count)
-		
-		t.stop()
+		#print("ITEMS INFERRED::", count)
+		#t.stop()
 		
 		if _infer_queue_processing: # rebuilding the tree sets this to false, so that not rebuilding with an unfinished queue
 			infer_queue_finished.emit()
@@ -1042,6 +1042,10 @@ class OutlineTree extends Tree:
 		else:
 			class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
 			member_data = class_obj.get_member_data(member_name)
+		
+		if member_data == null:
+			print("Member data null - %s" % member_name)
+			return
 		
 		var pr = Pr.new()
 		var is_main_class = access_path == ""
@@ -1356,11 +1360,17 @@ class OutlineTree extends Tree:
 			var type_array = type_data.get("result")
 			var assignment = type_array[2]
 			#print("ADJ STRING::ASSIGN::", assignment)
-			var tag_parser = TagParser.get_tag_parser("keys")
-			if not tag_parser:
-				printerr("CAN NOT GET TAG PARSER")
-			if tag_parser:
-				return tag_parser.check_expression_for_meta(assignment, line_idx)
+			var keys_completion = TagParser.get_tag_parser("keys", false)
+			if not keys_completion and not PLUGIN_EXPORTED:
+				printerr("CAN NOT GET KEYS COMPLETION")
+			if keys_completion:
+				var tl = gdscript_parser.get_type_lookup()
+				tl._initialize_op_regexes()
+				var as_check:RegExMatch = tl._as_regex.search(assignment)
+				if as_check: # trim type cast from the assignment, could be other things too to get rid of?
+					assignment = assignment.substr(0, as_check.get_start(0)).strip_edges()
+					
+				return keys_completion.check_expression_for_meta(assignment, line_idx)
 		return {}
 	
 	func dict_key_meta_valid_access(meta_dict:Dictionary):

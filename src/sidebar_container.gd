@@ -3,10 +3,8 @@ extends VSplitContainer
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
 const PluginButton = UtilsRemote.PluginButton
-
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
-
 const EditorIcons = UtilsRemote.EditorIcons
 
 const ScriptContainer = preload("res://addons/script_outline/src/script_container.gd")
@@ -54,7 +52,7 @@ func get_dock_data() -> Dictionary:
 func set_dock_data(data:Dictionary) -> void:
 	#print("SETTING::", data)
 	_dock_data = data
-	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR)
+	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR, true)
 	_current_view_mode = _dock_data.get(Keys.VIEW_MODE, ViewMode.BOTH) as ViewMode
 	
 	_ui_controls_call(&"set_dock_data", [data])

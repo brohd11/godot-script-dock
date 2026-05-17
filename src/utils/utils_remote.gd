@@ -1,6 +1,6 @@
 #! remote
 
-const EditorGDScriptParser = preload("res://addons/addon_lib/brohd/alib_editor/misc/parser/editor_parser.gd") #! resolve ALibEditor.Singletons.EditorGDScriptParser
+const EditorGDScriptParser = preload("res://addons/addon_lib/brohd/alib_editor/misc/parser/editor_parser.gd") #! resolve ALibEditor.Singleton.EditorGDScriptParser
 
 const TreeHelperBase = preload("res://addons/addon_lib/brohd/alib_runtime/tree_helper/tree_helper_base.gd") #! resolve ALibRuntime.TreeHelperBase
 
@@ -20,9 +20,9 @@ const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src
 const LineSubmit = preload("res://addons/addon_lib/brohd/alib_runtime/dialog/line_submit/line_submit.gd") #! resolve ALibRuntime.Dialog.Handlers.LineSubmit
 
 const EditorColors = preload("res://addons/addon_lib/brohd/alib_editor/misc/colors/editor_colors.gd") #! resolve ALibEditor.Colors
-const EditorIcons = preload("res://addons/addon_lib/brohd/alib_editor/misc/icons/editor_icons.gd") #! resolve ALibEditor.Singletons.EditorIcons
-const ScriptListManager = preload("res://addons/addon_lib/brohd/alib_editor/misc/script_list/script_list_manager.gd") #! resolve ALibEditor.Singletons.ScriptListManager
-const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singletons.TagParser
+const EditorIcons = preload("res://addons/addon_lib/brohd/alib_editor/misc/icons/editor_icons.gd") #! resolve ALibEditor.Singleton.EditorIcons
+const ScriptListManager = preload("res://addons/addon_lib/brohd/alib_editor/misc/script_list/script_list_manager.gd") #! resolve ALibEditor.Singleton.ScriptListManager
+const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
 
 const RightClickHandler = preload("res://addons/addon_lib/brohd/gui_click_handler/right_click_handler.gd") #! resolve ClickHandlers.RightClickHandler
 const Options = preload("res://addons/addon_lib/brohd/alib_runtime/popup_menu/popup_options.gd") #! resolve ALibRuntime.Popups.Options

@@ -1,7 +1,7 @@
 extends VBoxContainer
 
 
-const ScriptListManager = ALibEditor.Singletons.ScriptListManager
+const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 
 var filter_line_edit:LineEdit
