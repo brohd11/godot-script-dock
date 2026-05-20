@@ -5,9 +5,10 @@ const PLUGIN_EXPORTED = false
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
+const VarInsertType = UtilsRemote.VarInsertType
 const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const GDScriptParser = EditorGDScriptParser.GDScriptParser
-const VarInsertType = GDScriptParser.TypeLookup.VarInsertType
+
 const ParserClass = GDScriptParser.ParserClass
 const ParserFunc = GDScriptParser.ParserFunc
 const ParserKeys = GDScriptParser.Keys

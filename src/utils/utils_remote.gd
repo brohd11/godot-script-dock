@@ -14,6 +14,7 @@ const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd
 const UName = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_name.gd") #! resolve ALibRuntime.Utils.UName
 const UResource = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_resource.gd") #! resolve ALibRuntime.Utils.UResource
 const UGDScript = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_gdscript.gd") #! resolve ALibRuntime.Utils.UGDScript
+const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType
 const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd") #! resolve ALibRuntime.Utils.UString
 const UWindow = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_window.gd") #! resolve ALibRuntime.Utils.UWindow
 const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd") #! resolve ALibEditor.Utils.UClassDetail
