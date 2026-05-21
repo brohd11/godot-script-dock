@@ -75,7 +75,6 @@ func set_dock_data(data:Dictionary) -> void:
 		header_button_pressed.emit()
 
 func _ready() -> void:
-	print("READY IN OUTLINE")
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
 	
 	#ScriptEditorRef.subscribe(ScriptEditorRef.Event.EDITOR_SCRIPT_CHANGED, _on_editor_script_changed)
@@ -237,7 +236,6 @@ func _on_file_system_changed():
 
 
 func _on_parse_completed():
-	#print("PARSE HAPPENED")
 	if _editor_script_changed_flag:
 		_editor_script_changed_flag = false
 		_debounce_timer.stop()
@@ -414,7 +412,7 @@ class OutlineTree extends Tree:
 		_editor_theme = EditorInterface.get_editor_theme()
 		MemberData.set_colors()
 		
-		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("BUILD OUTLINE")
+		var t = GDScriptParser.TF.new("BUILD OUTLINE")
 		
 		var selected_path = get_selected_path()
 		
@@ -566,7 +564,7 @@ class OutlineTree extends Tree:
 			
 			var virtual_methods:Dictionary = MemberData.get_virtual_methods_of_class(class_base_type)
 			var inherited_members:Dictionary = class_obj.get_inherited_members()
-			#print("INH MEMBERS::FOR CLASS::", class_obj.get_name(),"::", inherited_members.keys())
+			
 			var static_methods:Dictionary = {}
 			var func_names:Array = class_obj.functions.keys()
 			if sort_mode == SortMode.NONE:
@@ -739,9 +737,7 @@ class OutlineTree extends Tree:
 	
 	func _process_infer_queue() -> void:
 		_infer_queue_processing = true
-		var t = ALibRuntime.Utils.UProfile.TimeFunction.new("INFER QUEUE TOTAL")
-		
-		#var tree_font_color:Color = _editor_theme.get_color("font_color", "Tree")
+		var t = GDScriptParser.TF.new("INFER QUEUE TOTAL")
 		
 		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
 		var count:int = 0
@@ -760,7 +756,7 @@ class OutlineTree extends Tree:
 		#gdscript_parser.parse()
 		# TEST
 		
-		var inc_t = ALibRuntime.Utils.UProfile.TimeFunction.new("Infer Queue", ALibRuntime.Utils.UProfile.TimeFunction.TimeScale.USEC, false)
+		var inc_t = GDScriptParser.TF.new("Infer Queue", GDScriptParser.TF.TimeScale.USEC, false)
 		inc_t.iterations = 50
 		inc_t.start()
 		while not _infer_queue.is_empty():
@@ -790,7 +786,8 @@ class OutlineTree extends Tree:
 			if item_type == OutlineKeys.ITEM_TYPE_ARG or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR:
 				var func_obj:ParserFunc = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
 				if not func_obj:
-					printerr("Outline-657--Could not get func obj::",access_path)
+					if not PLUGIN_EXPORTED:
+						printerr("Outline-infer_queue--Could not get func obj::",access_path)
 					continue
 				
 				member_data = func_obj.get_local_var_member_data(member_name, line_index)
@@ -804,7 +801,8 @@ class OutlineTree extends Tree:
 			var type:String = type_rich.type
 			
 			if member_data == null:
-				printerr("MemberData null in outline - %s" % member_name)
+				if not PLUGIN_EXPORTED:
+					printerr("MemberData null in outline - %s" % member_name)
 				continue
 			
 			var has_issue:=false
@@ -846,12 +844,11 @@ class OutlineTree extends Tree:
 				#fg_color = Color.DARK_RED.lightened(0.5)
 			
 			#TEST
-			var old_type = current_script_item_data.get(access_path).get("TEST_TYPE", "")
-			if old_type and old_type != type:
-				printerr("TYPECHANGED::", "L:", line_index, ":", access_path, " - ", old_type, " -> ", type)
-			current_script_item_data[access_path]["TEST_TYPE"] = type
+			#var old_type = current_script_item_data.get(access_path).get("TEST_TYPE", "")
+			#if old_type and old_type != type:
+				#printerr("TYPECHANGED::", "L:", line_index, ":", access_path, " - ", old_type, " -> ", type)
+			#current_script_item_data[access_path]["TEST_TYPE"] = type
 			#TEST
-			#print("INFER::", member_name, ":: -> ::", type)
 			
 			
 			
@@ -1031,21 +1028,24 @@ class OutlineTree extends Tree:
 		if is_local:
 			var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index)
 			if not is_instance_valid(func_obj):
-				print("NO FUNC FOR LOCAL??")
+				if not PLUGIN_EXPORTED:
+					print("NO FUNC FOR LOCAL??")
 				return
 			if is_arg:
 				member_data = func_obj.arguments.get(member_name)
 			else:
 				member_data = func_obj.local_vars.get(line_index)
 			if member_data == null:
-				print("Member data null - local var")
+				if not PLUGIN_EXPORTED:
+					print("Member data null - local var")
 				return
 		else:
 			class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
 			member_data = class_obj.get_member_data(member_name)
 		
 		if member_data == null:
-			print("Member data null - %s" % member_name)
+			if not PLUGIN_EXPORTED:
+				print("Member data null - %s" % member_name)
 			return
 		
 		var pr = Pr.new()
@@ -1362,8 +1362,6 @@ class OutlineTree extends Tree:
 			var assignment = type_array[2]
 			#print("ADJ STRING::ASSIGN::", assignment)
 			var keys_completion = TagParser.get_tag_parser("keys", false)
-			if not keys_completion and not PLUGIN_EXPORTED:
-				printerr("CAN NOT GET KEYS COMPLETION")
 			if keys_completion:
 				var tl = gdscript_parser.get_type_lookup()
 				tl._initialize_op_regexes()
@@ -1471,7 +1469,8 @@ class MemberData:
 				return &"ObjectDisabled"
 			
 			if type.begins_with("enum::"):
-				printerr("THIS IS COMING IN, ENUM enum::Type -> ", type)
+				if not PLUGIN_EXPORTED:
+					printerr("THIS IS COMING IN, ENUM enum::Type -> ", type)
 				return &"Enum" # should this be handled in typelookup differently?
 			
 			# for things like enums in the base class
