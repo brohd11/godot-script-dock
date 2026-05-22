@@ -765,6 +765,9 @@ class OutlineTree extends Tree:
 			if not is_instance_valid(item):
 				continue
 			
+			if not is_instance_valid(gdscript_parser.get_code_edit_parser()):
+				continue
+			
 			var item_metadata:Dictionary = item.get_metadata(0)
 			var item_type:StringName = item_metadata.get(OutlineKeys.ITEM_TYPE)
 			var line_index:int = item_metadata.get(ParserKeys.LINE_INDEX, -1)
