@@ -364,8 +364,8 @@ func _set_current_access_path(build:=false):
 
 
 
-func _on_filter_text_changed(new_text:String):
-	var selected_path = outline_tree.get_selected_path()
+func _on_filter_text_changed(new_text:String) -> void:
+	var selected_path:String = outline_tree.get_selected_path()
 	outline_tree.current_filter_text = new_text.strip_edges()
 	outline_tree.filter_items()
 	if not outline_tree.is_filtering:
@@ -1177,15 +1177,15 @@ class OutlineTree extends Tree:
 		return panel
 	
 	
-	func _get_panel_size(pr:Pr, label:RichTextLabel): #ALERT this needs testing on mac
-		var largest_string = pr.get_longest_line()
+	func _get_panel_size(pr:Pr, label:RichTextLabel):
+		var largest_string = pr.get_longest_line().strip_edges()
 		#print(largest_string)
 		var line_count = max(label.text.count("\n") + 1, 2) # minimum 2 lines otherwise single line is cut off
 		var font = label.get_theme_font("font")
 		var string_size = font.get_string_size(largest_string)
 		var x_size = string_size.x * 1.1 # multiplier for small strings seems to be necessary for some reason
 		var y_size = string_size.y * (line_count)
-		var final_size = Vector2(x_size, y_size)
+		var final_size = Vector2(x_size, y_size) * EditorInterface.get_editor_scale()
 		#print(final_size)
 		return final_size
 	
