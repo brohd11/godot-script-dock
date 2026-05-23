@@ -5,9 +5,12 @@ const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 
 const SideBarContainer = preload("res://addons/script_outline/src/sidebar_container.gd")
+const VarInsertContext = preload("res://addons/script_outline/src/editor_plugins/var_insert.gd")
 
 var sidebar_container:SideBarContainer
 var dm_instance_manager:DockManager.InstanceManager
+
+var var_insert_context:VarInsertContext
 
 func _get_plugin_name() -> String:
 	return "Script Outline"
@@ -19,6 +22,9 @@ func _enter_tree() -> void:
 	FileSystemSingleton.register_node(self)
 	EditorGDScriptParser.register_node(self)
 	
+	var_insert_context = VarInsertContext.new()
+	add_context_menu_plugin(EditorContextMenuPlugin.CONTEXT_SLOT_SCRIPT_EDITOR_CODE, var_insert_context)
+	
 	sidebar_container = SideBarContainer.new()
 	
 	dm_instance_manager = DockManager.InstanceManager.new(self, false, true)
@@ -29,6 +35,9 @@ func _enter_tree() -> void:
 func _exit_tree() -> void:
 	FileSystemSingleton.unregister_node(self)
 	EditorGDScriptParser.unregister_node(self)
+	
+	if is_instance_valid(var_insert_context):
+		remove_context_menu_plugin(var_insert_context)
 	
 	if is_instance_valid(sidebar_container):
 		sidebar_container.clean_up()

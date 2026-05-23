@@ -789,8 +789,7 @@ class OutlineTree extends Tree:
 			if item_type == OutlineKeys.ITEM_TYPE_ARG or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR:
 				var func_obj:ParserFunc = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
 				if not func_obj:
-					if not PLUGIN_EXPORTED:
-						printerr("Outline-infer_queue--Could not get func obj::",access_path)
+					MemberData.print_deb("Outline-infer_queue--Could not get func obj::",access_path)
 					continue
 				
 				member_data = func_obj.get_local_var_member_data(member_name, line_index)
@@ -804,8 +803,7 @@ class OutlineTree extends Tree:
 			var type:String = type_rich.type
 			
 			if member_data == null:
-				if not PLUGIN_EXPORTED:
-					printerr("MemberData null in outline - %s" % member_name)
+				MemberData.print_deb("MemberData null in outline - %s" % member_name)
 				continue
 			
 			var has_issue:=false
@@ -1026,35 +1024,35 @@ class OutlineTree extends Tree:
 		var is_arg = item_type == OutlineKeys.ITEM_TYPE_ARG
 		var is_local = is_arg or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR
 		
+		var is_main_class = access_path == ""
 		var class_obj:ParserClass
 		var member_data
-		if is_local:
-			var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index)
-			if not is_instance_valid(func_obj):
-				if not PLUGIN_EXPORTED:
-					print("NO FUNC FOR LOCAL??")
-				return
-			if is_arg:
-				member_data = func_obj.arguments.get(member_name)
+		var member_type = &""
+		if not is_main_class:
+			if is_local:
+				var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index)
+				if not is_instance_valid(func_obj):
+					MemberData.print_deb("NO FUNC FOR LOCAL??")
+					return
+				if is_arg:
+					member_data = func_obj.arguments.get(member_name)
+				else:
+					member_data = func_obj.local_vars.get(line_index)
+				if member_data == null:
+					MemberData.print_deb("Member data null - local var")
+					return
 			else:
-				member_data = func_obj.local_vars.get(line_index)
+				class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
+				member_data = class_obj.get_member_data(member_name)
+			
 			if member_data == null:
-				if not PLUGIN_EXPORTED:
-					print("Member data null - local var")
+				MemberData.print_deb("Member data null - %s" % member_name)
 				return
-		else:
-			class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
-			member_data = class_obj.get_member_data(member_name)
-		
-		if member_data == null:
-			if not PLUGIN_EXPORTED:
-				print("Member data null - %s" % member_name)
-			return
+			
+			member_type = member_data.get(ParserKeys.MEMBER_TYPE)
 		
 		var pr = Pr.new()
-		var is_main_class = access_path == ""
 		
-		var member_type = member_data.get(ParserKeys.MEMBER_TYPE)
 		if is_main_class or member_type == ParserKeys.MEMBER_TYPE_CLASS:
 			var inner_access_path = ""
 			if not is_main_class:
@@ -1179,7 +1177,7 @@ class OutlineTree extends Tree:
 		return panel
 	
 	
-	func _get_panel_size(pr:Pr, label:RichTextLabel):
+	func _get_panel_size(pr:Pr, label:RichTextLabel): #ALERT this needs testing on mac
 		var largest_string = pr.get_longest_line()
 		#print(largest_string)
 		var line_count = max(label.text.count("\n") + 1, 2) # minimum 2 lines otherwise single line is cut off
@@ -1329,7 +1327,11 @@ class OutlineTree extends Tree:
 		if data.has("fg_color"):
 			item.set_custom_color(0, data.fg_color)
 		if data.has("bg_color"):
-			item.set_custom_bg_color(0, data.bg_color)
+			#item.set_custom_bg_color(0, data.bg_color)
+			var par = item # this will set all up to the top red
+			while is_instance_valid(par):
+				par.set_custom_bg_color(0, data.bg_color)
+				par = par.get_parent()
 		if data.has("button_hints"):
 			var button_idx = item.get_button_by_id(0, 0)
 			var has_hints = not data.button_hints.is_empty()
@@ -1417,6 +1419,10 @@ class MemberData:
 		string_name_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.STRING_NAME)
 		function_def_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.FUNCTION_DEFINITION)
 		symbol_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.SYMBOL)
+	
+	static func print_deb(... msg:Array):
+		if not PLUGIN_EXPORTED:
+			print("::".join(msg))
 	
 	static func is_a_gdscript_file(file_path:String):
 		return GDScriptParser.Utils.is_gdscript_path(file_path)
@@ -1713,16 +1719,15 @@ class MemberData:
 					return UString.dot_join(current_class, current_func)
 			
 			var for_info = GDScriptParser.Utils.get_for_loop_info(context_text)
-			if for_info.is_empty():
-				return UString.dot_join(current_class, current_func)
-			else:
-				member_name = for_info[0]
+			if for_info:
+				if for_info.is_empty():
+					return UString.dot_join(current_class, current_func)
+				else:
+					member_name = for_info[0]
 		
 		if in_class_body:
 			if class_obj.has_script_member(member_name):
-				
 				return UString.dot_join(current_class, member_name)
-			
 		else:
 			if class_obj.has_function(member_name):
 				return UString.dot_join(current_class, member_name)
@@ -1731,8 +1736,8 @@ class MemberData:
 			var local_var_data = func_obj.get_local_var_member_data(member_name, start_idx)
 			if local_var_data:
 				return UString.dot_joinv([current_class, current_func, member_name])
-			
-			return UString.dot_join(current_class, current_func)
+			else:
+				return UString.dot_join(current_class, current_func)
 		
 		return "null"
 	
