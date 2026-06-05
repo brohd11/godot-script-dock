@@ -1,6 +1,7 @@
 extends MarginContainer
 
 const PLUGIN_EXPORTED = false
+const PRINT_DEBUG = PLUGIN_EXPORTED and false
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
@@ -1421,7 +1422,7 @@ class MemberData:
 		symbol_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.SYMBOL)
 	
 	static func print_deb(... msg:Array):
-		if not PLUGIN_EXPORTED:
+		if PRINT_DEBUG:
 			print("::".join(msg))
 	
 	static func is_a_gdscript_file(file_path:String):
