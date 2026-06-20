@@ -68,12 +68,15 @@ func get_dock_data() -> Dictionary:
 	var data = {}
 	data[OutlineKeys.DOCK_OUTLINE_VIS] = outline_tree.visible
 	return data
+	
+	
 
 func set_dock_data(data:Dictionary) -> void:
 	_dock_data = data
 	var outline_vis = _dock_data.get(OutlineKeys.DOCK_OUTLINE_VIS, true)
 	if not outline_vis: # emit the signal because the sidebar needs to set it's settings
 		header_button_pressed.emit()
+	
 
 func _ready() -> void:
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_file_system_changed, 1)
@@ -365,6 +368,7 @@ func _set_current_access_path(build:=false):
 
 
 
+
 func _on_filter_text_changed(new_text:String) -> void:
 	var selected_path:String = outline_tree.get_selected_path()
 	outline_tree.current_filter_text = new_text.strip_edges()
@@ -374,6 +378,8 @@ func _on_filter_text_changed(new_text:String) -> void:
 			"scroll_tree":true,
 			"center_tree": true
 		})
+
+
 
 
 class OutlineTree extends Tree:
@@ -635,7 +641,7 @@ class OutlineTree extends Tree:
 					_queue_infer_item(arg_item, arg_access_path, arg_name, class_obj)
 				
 				var lv_dec_line_idxes = func_obj.local_vars.keys()
-				lv_dec_line_idxes.sort()
+				#lv_dec_line_idxes.sort() # this need to be handled compat with ts
 				for lv_dec_line in lv_dec_line_idxes:
 					var lv_data:Dictionary = func_obj.local_vars[lv_dec_line]
 					var lv_name:String = lv_data.get(ParserKeys.MEMBER_NAME)
@@ -652,10 +658,12 @@ class OutlineTree extends Tree:
 					if not lv_suffix.is_empty():
 						lv_suffix = OutlineKeys.SUFFIX_SPACE + lv_suffix
 					
+					var line_index = TSCompat.get_lv_line_index(lv_dec_line)
+					
 					lv_item.set_text(0, lv_name + lv_suffix)
 					var lv_meta:Dictionary = { # this will need a column too if their are multiple in line?
 						ParserKeys.ACCESS_PATH: lv_access_path,
-						ParserKeys.LINE_INDEX: lv_dec_line,
+						ParserKeys.LINE_INDEX: line_index,
 						OutlineKeys.ITEM_TYPE: OutlineKeys.ITEM_TYPE_LOCAL_VAR,
 						}
 					lv_item.set_metadata(0, lv_meta)
@@ -749,7 +757,7 @@ class OutlineTree extends Tree:
 		
 		# TEST
 		# should this go through editor parser so that signals are sent? Would retrigger build?
-		if gdscript_parser.get_code_edit_parser().cache_dirty:
+		if not gdscript_parser.cache_valid():
 			_clear_infer_queue()
 			EditorGDScriptParser.queue_parse()
 			return
@@ -771,6 +779,8 @@ class OutlineTree extends Tree:
 			
 			var item_metadata:Dictionary = item.get_metadata(0)
 			var item_type:StringName = item_metadata.get(OutlineKeys.ITEM_TYPE)
+			if item_metadata.get(ParserKeys.LINE_INDEX, -1) is String:
+				printerr("LINE INDEX IS STRING:",item_metadata)
 			var line_index:int = item_metadata.get(ParserKeys.LINE_INDEX, -1)
 			
 			var access_path:String = item_data.get(ParserKeys.ACCESS_PATH)
@@ -1378,9 +1388,15 @@ class OutlineTree extends Tree:
 				return keys_completion.check_expression_for_meta(assignment, line_idx)
 		return {}
 	
+	
+	
+	
+	
 	func dict_key_meta_valid_access(meta_dict:Dictionary):
 		if meta_dict.is_empty():
 			return true
+			
+			
 		var sim_call = meta_dict.get("simulated_call", "-invalid_access")
 		if sim_call == "": # this would be a direct assignment of the dict
 			return true
@@ -1390,7 +1406,7 @@ class OutlineTree extends Tree:
 		if meta_dict.is_empty():
 			return ""
 		var sim_call = meta_dict.get("simulated_call", "-invalid_access")
-		if sim_call == "-invalid_access":
+		if sim_call == "-invalid_access": 
 			return ""
 		return gdscript_parser.resolve_expression_to_type(sim_call, line_idx)
 		
@@ -1398,6 +1414,7 @@ class OutlineTree extends Tree:
 
 class MemberData:
 	const ITEM_LINE_STR = "[l:%s]"
+	
 	
 	const COLLAPSED = &"collapsed"
 	const LAST_ICON = &"last_icon"
@@ -1437,6 +1454,7 @@ class MemberData:
 			type = delim_check
 		else:
 			type = type.trim_suffix(ParserKeys.INS_DELIM)
+		
 		
 		if type.is_empty():
 			#return &"MissingNode"
@@ -1640,7 +1658,6 @@ class MemberData:
 				virtual_methods[method_data.name] = true
 		return virtual_methods
 	
-	
 	static func get_class_data(gdscript_parser:GDScriptParser, class_obj:ParserClass, pr:Pr):
 		if class_obj.access_path != "": # inner classes
 			pr.append("class ", keyword_color).append(class_obj.access_path, base_type_color)
@@ -1749,7 +1766,16 @@ class MemberData:
 			item_access_path = temp + "%%" + str(count)
 			count += 1
 		return item_access_path
-	
+
+class TSCompat:
+	static func get_lv_line_index(val:Variant):
+		if val is int:
+			return val
+		if val is String:
+			if val.contains("-"):
+				return int(val.get_slice("-", 1))
+			elif val.is_valid_int():
+				return int(val)
 
 class OutlineKeys:
 	const ITEM = &"item"
