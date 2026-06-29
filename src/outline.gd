@@ -642,29 +642,33 @@ class OutlineTree extends Tree:
 				
 				var lv_dec_line_idxes = func_obj.local_vars.keys()
 				#lv_dec_line_idxes.sort() # this need to be handled compat with ts
-				for lv_dec_line in lv_dec_line_idxes:
-					var lv_data:Dictionary = func_obj.local_vars[lv_dec_line]
+				for lv_full_name:String in lv_dec_line_idxes:
+					var lv_data:Dictionary = func_obj.local_vars[lv_full_name]
 					var lv_name:String = lv_data.get(ParserKeys.MEMBER_NAME)
 					var lv_member_type:StringName = lv_data.get(ParserKeys.MEMBER_TYPE)
 					var lv_access_path:String = MemberData.get_lv_access_path(class_items, UString.dot_join(full_access_path, lv_name))
 					var lv_item:TreeItem = create_item(item)
 					class_items[lv_access_path] = lv_item
 					
+					var line_index = lv_full_name.get_slice("-", 1).to_int()
+					var line_col = lv_full_name.get_slice("-", 2).to_int()
+					
 					var lv_suffix = ""
 					if lv_member_type == ParserKeys.MEMBER_TYPE_FOR:
 						lv_suffix += "[for loop]"
 					if display_line_numbers:
-						lv_suffix += MemberData.ITEM_LINE_STR % lv_dec_line
+						lv_suffix += MemberData.ITEM_LINE_STR % line_index
 					if not lv_suffix.is_empty():
 						lv_suffix = OutlineKeys.SUFFIX_SPACE + lv_suffix
 					
-					var line_index = TSCompat.get_lv_line_index(lv_dec_line)
+					
 					
 					lv_item.set_text(0, lv_name + lv_suffix)
 					var lv_meta:Dictionary = { # this will need a column too if their are multiple in line?
 						ParserKeys.ACCESS_PATH: lv_access_path,
 						ParserKeys.LINE_INDEX: line_index,
 						OutlineKeys.ITEM_TYPE: OutlineKeys.ITEM_TYPE_LOCAL_VAR,
+						OutlineKeys.LOCAL_VAR_NAME: lv_full_name,
 						}
 					lv_item.set_metadata(0, lv_meta)
 					_set_item_params_from_persistent_data(lv_item, lv_access_path)
@@ -785,6 +789,9 @@ class OutlineTree extends Tree:
 			
 			var access_path:String = item_data.get(ParserKeys.ACCESS_PATH)
 			var member_name:String = item_data.get(OutlineKeys.NAME)
+			var local_var_name:String = item_metadata.get(OutlineKeys.LOCAL_VAR_NAME, "")
+			if local_var_name != "":
+				member_name = local_var_name
 			var class_obj:ParserClass = item_data.get(OutlineKeys.CLASS_OBJ)
 			
 			var fg_color:Color = Color.BLACK
@@ -803,9 +810,9 @@ class OutlineTree extends Tree:
 					MemberData.print_deb("Outline-infer_queue--Could not get func obj::",access_path)
 					continue
 				
-				member_data = func_obj.get_local_var_member_data(member_name, line_index)
-				type_rich = func_obj.get_local_var_type_rich(line_index, member_name)
-				has_static_type = func_obj.is_local_var_static_typed(line_index, member_name)
+				member_data = func_obj.get_local_var_member_data(member_name)
+				type_rich = func_obj.get_local_var_type_rich(member_name)
+				has_static_type = func_obj.is_local_var_static_typed(member_name)
 			else:
 				member_data = class_obj.get_member_data(member_name)
 				type_rich = class_obj.get_member_type_rich(member_name)
@@ -1014,6 +1021,9 @@ class OutlineTree extends Tree:
 		
 		var meta:Dictionary = item.get_metadata(0)
 		var member_name:String = get_item_member_name(item)
+		var local_var_name = meta.get(OutlineKeys.LOCAL_VAR_NAME, "")
+		if local_var_name != "":
+			member_name = local_var_name
 		
 		var panel:PanelContainer = PanelContainer.new()
 		var vbox:VBoxContainer = VBoxContainer.new()
@@ -1048,7 +1058,7 @@ class OutlineTree extends Tree:
 				if is_arg:
 					member_data = func_obj.arguments.get(member_name)
 				else:
-					member_data = func_obj.local_vars.get(line_index)
+					member_data = func_obj.local_vars.get(member_name)
 				if member_data == null:
 					MemberData.print_deb("Member data null - local var")
 					return
@@ -1120,14 +1130,14 @@ class OutlineTree extends Tree:
 				member_type_display = &"local var"
 			else:
 				member_color = MemberData.member_var_color
-			pr.append(member_type_display, MemberData.keyword_color).append(" " + member_name, member_color)
+			pr.append(member_type_display, MemberData.keyword_color).append(" " + member_name.get_slice("-", 0), member_color)
 			
 			var type:String
 			if not is_local:
 				type = class_obj.get_member_type(member_name)
 			else:
 				var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
-				type = func_obj.get_local_var_type(line_index, member_name)
+				type = func_obj.get_local_var_type(member_name)
 			
 			if member_type == ParserKeys.MEMBER_TYPE_VAR or member_type == ParserKeys.MEMBER_TYPE_STATIC_VAR:
 				var dict_key_meta = get_dict_key_meta(gdscript_parser, line_index)
@@ -1751,7 +1761,8 @@ class MemberData:
 				return UString.dot_join(current_class, member_name)
 			
 			var func_obj = class_obj.get_function(current_func) as ParserFunc
-			var local_var_data = func_obj.get_local_var_member_data(member_name, start_idx)
+			# ALERT this needs to be tested
+			var local_var_data = func_obj.get_local_var_member_data(member_name)
 			if local_var_data:
 				return UString.dot_joinv([current_class, current_func, member_name])
 			else:
@@ -1780,6 +1791,7 @@ class TSCompat:
 class OutlineKeys:
 	const ITEM = &"item"
 	const NAME = &"name"
+	const LOCAL_VAR_NAME = &"local_var_name"
 	const CLASS_OBJ = &"class_obj"
 	const IS_INSTANCE = &"is_instance"
 	
