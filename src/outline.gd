@@ -436,6 +436,9 @@ class OutlineTree extends Tree:
 		var classes = gdscript_parser.get_classes()
 		if classes.is_empty():
 			return
+		classes.erase("") # tree sitter places this at end
+		classes.push_front("") # just remove and push front
+		
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
 			var class_base_type = class_obj.script_base_type
@@ -1077,7 +1080,8 @@ class OutlineTree extends Tree:
 		if is_main_class or member_type == ParserKeys.MEMBER_TYPE_CLASS:
 			var inner_access_path = ""
 			if not is_main_class:
-				inner_access_path = UString.dot_join(member_data.get(ParserKeys.ACCESS_PATH), member_name)
+				#inner_access_path = UString.dot_join(member_data.get(ParserKeys.ACCESS_PATH), member_name)
+				inner_access_path = member_data.get(ParserKeys.ACCESS_PATH) # must have been during ts refactor?
 			var inner_class_obj = gdscript_parser.get_class_object(inner_access_path) as ParserClass
 			MemberData.get_class_data(gdscript_parser, inner_class_obj, pr)
 			label.text = pr.get_string()
@@ -1169,9 +1173,11 @@ class OutlineTree extends Tree:
 							pr.append("empty dictionary")
 						else:
 							for mem in dict_members:
+								mem = MemberData.trim_string(mem)
 								pr.new_line().append("\t" + mem, MemberData.member_var_color)
 						
 					else: # this would already be handled via my own
+						val = MemberData.trim_string(val)
 						pr.append(val, MemberData.member_var_color)
 			
 			pr.new_line().append("line", MemberData.keyword_color).append(": ", MemberData.symbol_color).append("%s" % line_index)
@@ -1660,6 +1666,10 @@ class MemberData:
 		var file_name = trimmed.get_file()
 		return prefix + first_dir.path_join("...").path_join(file_name)
 	
+	static func trim_string(string:String, length:int=30):
+		if string.length() > length:
+			return string.left(length) + "..."
+		return string
 	
 	static func get_virtual_methods_of_class(class_type:String):
 		var virtual_methods:= {}

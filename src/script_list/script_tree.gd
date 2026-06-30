@@ -13,8 +13,6 @@ const Options = UtilsRemote.Options
 
 const CacheHelper = UtilsRemote.CacheHelper
 
-const TEXT_FILE_TYPES = ScriptListManager.TEXT_FILE_TYPES
-
 var script_list_manager:ScriptListManager
 var filesystem_singleton:FileSystemSingleton
 
@@ -126,12 +124,12 @@ func set_root_dir(root:String):
 
 func _set_current_files():
 	if root_dir == "res://":
-		current_files = filesystem_singleton.get_paths_of_ext(TEXT_FILE_TYPES)
+		current_files = filesystem_singleton.get_paths_of_ext(ScriptListManager.get_text_file_types())
 	else:
 		current_files.clear()
 		var files = filesystem_singleton.get_files_in_dir(root_dir)
 		for f in files:
-			if f.get_extension() in TEXT_FILE_TYPES:
+			if f.get_extension() in ScriptListManager.get_text_file_types():
 				current_files.append(f)
 
 
@@ -186,7 +184,7 @@ func _on_item_right_clicked():
 	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
 	if selected == "res://" or selected == null:
 		return
-	if Input.is_key_pressed(KEY_CTRL) and selected.get_extension() in TEXT_FILE_TYPES:
+	if Input.is_key_pressed(KEY_CTRL) and selected.get_extension() in ScriptListManager.get_text_file_types():
 		_select_or_open_in_script_list(true)
 		
 	elif selected.ends_with("/"):
