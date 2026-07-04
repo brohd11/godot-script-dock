@@ -13,6 +13,8 @@ const Options = UtilsRemote.Options
 
 const CacheHelper = UtilsRemote.CacheHelper
 
+const CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
+
 var script_list_manager:ScriptListManager
 var filesystem_singleton:FileSystemSingleton
 
@@ -67,7 +69,6 @@ func _ready() -> void:
 	
 	FileSystemSingleton.call_on_ready(_on_fs_ready)
 
-
 func _on_fs_ready():
 	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
 	_on_file_system_changed()
@@ -105,10 +106,14 @@ func _set_flat_view(state:bool):
 
 func _on_file_system_changed():
 	#_script_data = {} # why is this clearing?
-	
+
 	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
 	_set_current_files()
+	
+	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("fs changed: " + root_dir)
+
 	_build_tree()
+	#t.stop()
 	
 	if selected != null:
 		for path in tree_helper.item_dict.keys():
@@ -116,6 +121,8 @@ func _on_file_system_changed():
 				var item = tree_helper.item_dict[path] as TreeItem
 				item.select(0)
 				break
+	
+	
 
 func set_root_dir(root:String):
 	root_dir = root
@@ -167,8 +174,16 @@ func _get_script_data(file_path:String):
 	
 	var data = {}
 	data[ScriptTreeKeys.SCRIPT_PATH] = file_path
-	data[ScriptTreeKeys.SCRIPT_IS_TOOL] = UGDScript.FileRead.get_is_tool(file_path)
-	data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_type_icon(file_path)
+	if file_path.get_extension() == "gd":
+		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = UGDScript.FileRead.get_is_tool(file_path)
+	elif file_path.get_extension() == "cs":
+		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = false
+	else:
+		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = false
+		
+	#data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_type_icon(file_path)
+	data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_file_type(file_path)
+	
 	#print(file_path,"::TOOL::", data[ScriptTreeKeys.SCRIPT_IS_TOOL] )
 	CacheHelper.store_data(file_path, data, _script_data_cache, [file_path])
 	return data
@@ -237,6 +252,8 @@ class ScriptTreeHelper extends TreeHelperBase:
 	var tool_color:Color
 	var thumbnail_size:float = 16
 	var show_files:bool = true
+	
+	var _icon_dict:= {}
 
 	func set_thumbnail_size():
 		thumbnail_size = 16 * EditorInterface.get_editor_scale()
@@ -265,11 +282,19 @@ class ScriptTreeHelper extends TreeHelperBase:
 		_set_item_icon(item, file_data)
 	
 	func _set_item_icon(last_item:TreeItem, file_data:Dictionary):
-		last_item.set_icon(0, file_data.get(ScriptTreeKeys.SCRIPT_ICON))
+		last_item.set_icon(0, _get_icon(file_data.get(ScriptTreeKeys.SCRIPT_ICON)))
 		if file_data.get(ScriptTreeKeys.SCRIPT_IS_TOOL, false) == true:
 			last_item.set_icon_modulate(0, tool_color)
 		else:
 			last_item.set_icon_modulate(0, Color.WHITE)
+	
+	func _get_icon(icon_name:String):
+		if not _icon_dict.has(icon_name):
+			if EditorInterface.get_editor_theme().has_icon(icon_name, &"EditorIcons"):
+				_icon_dict[icon_name] = EditorInterface.get_editor_theme().get_icon(icon_name, &"EditorIcons")
+			else:
+				_icon_dict[icon_name] = EditorInterface.get_editor_theme().get_icon(&"File", &"EditorIcons")
+		return _icon_dict[icon_name]
 
 
 

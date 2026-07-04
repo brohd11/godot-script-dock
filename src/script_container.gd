@@ -35,6 +35,8 @@ enum TabType {
 	COLLECTION,
 }
 
+const CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
+
 var _dock_data:Dictionary
 var _script_data_cache:Dictionary = {}
 
@@ -56,6 +58,7 @@ func get_dock_data() -> Dictionary:
 	var data = {}
 	data[Keys.CURRENT_TAB] = tab_bar_container.get_tab_bar().current_tab
 	
+	UFile.store_data_bin(_script_data_cache, CACHE_BIN_PATH)
 	return data
 
 func set_dock_data(data:Dictionary) -> void:
@@ -65,6 +68,11 @@ func set_dock_data(data:Dictionary) -> void:
 
 
 func _ready() -> void:
+	var script_cache = UFile.get_data_bin(CACHE_BIN_PATH)
+	if script_cache != null:
+		_script_data_cache = script_cache
+		# comment for now, need to work off of icon names, not icons for serialization
+		pass
 	_build_nodes()
 	_tab_icon = EditorIcons.get_icon_white("TabBar")
 

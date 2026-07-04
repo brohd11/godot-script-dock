@@ -279,15 +279,17 @@ func _on_caret_changed():
 		if outline_tree.cache_dirty:
 			# this will basically fire every time you new line, ideally this wouldn't...
 			EditorGDScriptParser.queue_parse()
-		_set_current_access_path.call_deferred()
+		_set_current_access_path.call_deferred(_follow_cursor)
 
 
 func _on_tree_built():
-	_set_current_access_path(true)
+	if not _follow_cursor: # not sure about this...
+		_set_current_access_path(true)
+	var my_var
+	pass
 
 func _on_infer_queue_finished():
 	_build_breadcrumb()
-
 
 
 func _build_breadcrumb(current_access_path:String="null"):
@@ -297,7 +299,8 @@ func _build_breadcrumb(current_access_path:String="null"):
 	var editor_theme:Theme = EditorInterface.get_editor_theme()
 	
 	var full_breadcrumb = _get_selected_breadcrumb(true)
-	var keep_tabs =  full_breadcrumb.begins_with(current_access_path)
+	var trimmed_current_access = current_access_path.get_slice("-", 0) # ensure local var fluff is not here for breadcrumb check
+	var keep_tabs =  full_breadcrumb.begins_with(trimmed_current_access)
 	#print("KEEP::", keep_tabs, "::CURR::", current_access_path, "::BREAD::", full_breadcrumb)
 	if current_access_path == "null":
 		return
@@ -331,7 +334,7 @@ func _build_breadcrumb(current_access_path:String="null"):
 				elif item_type == OutlineKeys.ITEM_TYPE_ARG or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR:
 					icon_name = &"LocalVariable"
 			
-			_bread_crumb_tabs.add_section(part, editor_theme.get_icon(icon_name, _ED_ICONS))
+			_bread_crumb_tabs.add_section(part.get_slice("-", 0), editor_theme.get_icon(icon_name, _ED_ICONS))
 			_bread_crumb_tabs.set_section_metadata(_bread_crumb_tabs.get_section_count() - 1, working_path)
 		
 		_bread_crumb_tabs.select_section(_bread_crumb_tabs.get_section_count() - 1)
@@ -649,7 +652,7 @@ class OutlineTree extends Tree:
 					var lv_data:Dictionary = func_obj.local_vars[lv_full_name]
 					var lv_name:String = lv_data.get(ParserKeys.MEMBER_NAME)
 					var lv_member_type:StringName = lv_data.get(ParserKeys.MEMBER_TYPE)
-					var lv_access_path:String = MemberData.get_lv_access_path(class_items, UString.dot_join(full_access_path, lv_name))
+					var lv_access_path:String = MemberData.get_lv_access_path(class_items, UString.dot_join(full_access_path, lv_full_name))
 					var lv_item:TreeItem = create_item(item)
 					class_items[lv_access_path] = lv_item
 					
@@ -1490,6 +1493,8 @@ class MemberData:
 				if not parser_data:
 					return &"MissingNode"
 				var class_obj = parser_data.get(ParserKeys.GET_CLASS_OBJ) as ParserClass
+				if not is_instance_valid(class_obj):
+					return &"Variant"
 				var base = class_obj.script_base_type
 				var icon_name:StringName
 				if is_instance:
@@ -1737,6 +1742,9 @@ class MemberData:
 		
 		var current_class = current_parser.get_class_at_line(line)
 		var class_obj = current_parser.get_class_object(current_class) as GDScriptParser.ParserClass
+		if not is_instance_valid(class_obj):
+			return "null"
+		
 		var current_func = current_parser.get_function_at_line(line)
 		var in_class_body = current_func == ParserKeys.CLASS_BODY
 		
@@ -1771,7 +1779,8 @@ class MemberData:
 				return UString.dot_join(current_class, member_name)
 			
 			var func_obj = class_obj.get_function(current_func) as ParserFunc
-			# ALERT this needs to be tested
+			var col = code_edit_parser.get_member_column(line)
+			member_name = "%s-%s-%s" % [member_name, line, col]
 			var local_var_data = func_obj.get_local_var_member_data(member_name)
 			if local_var_data:
 				return UString.dot_joinv([current_class, current_func, member_name])
