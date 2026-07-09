@@ -1,8 +1,8 @@
-extends VBoxContainer
+extends FSTree
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
-const TreeHelperBase = UtilsRemote.TreeHelperBase
+const FSTree = UtilsRemote.FSTree
 const UResource = UtilsRemote.UResource
 const UGDScript = UtilsRemote.UGDScript
 
@@ -11,65 +11,29 @@ const ScriptListManager = UtilsRemote.ScriptListManager
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
+const EditorColors = UtilsRemote.EditorColors
 const CacheHelper = UtilsRemote.CacheHelper
 
-const CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
+
+const NEW_TAB = "New Tab"
 
 var script_list_manager:ScriptListManager
-var filesystem_singleton:FileSystemSingleton
 
 var right_click_handler:RightClickHandler
 
+var immutable:bool = false
 var script_tree:Tree
-var tree_helper:ScriptTreeHelper
-
-var filter_line_edit:LineEdit
-
-var current_files:PackedStringArray = []
-
-var root_dir = "res://"
-var _flat_view:=false
 
 var _script_data_cache:= {}
 
 signal create_new_tab(selected_path:String)
 
-
-func _ready() -> void:
-	
-	filter_line_edit = LineEdit.new()
-	add_child(filter_line_edit)
-	filter_line_edit.text_changed.connect(_on_filter_line_text_changed)
-	filter_line_edit.right_icon = EditorInterface.get_editor_theme().get_icon(&"Search", &"EditorIcons")
-	filter_line_edit.clear_button_enabled = true
-	filter_line_edit.placeholder_text = "Filter Scripts"
-	
-	size_flags_vertical = Control.SIZE_EXPAND_FILL
-	
-	script_tree = Tree.new()
-	script_tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	script_tree.select_mode = Tree.SELECT_SINGLE
-	script_tree.allow_rmb_select = true
-	script_tree.item_activated.connect(_on_item_activated)
-	script_tree.set_drag_forwarding(_on_script_tree_get_drag_data, func(a,d):return false, func(a,b):return)
-	add_child(script_tree)
-	
-	script_list_manager = ScriptListManager.get_instance()
-	
-	filesystem_singleton = FileSystemSingleton.get_instance()
-	
-	
-	tree_helper = ScriptTreeHelper.new(script_tree, null, null, null, false)
-	tree_helper.filesystem_singleton = filesystem_singleton
-	tree_helper.tool_color = script_list_manager.tool_color
-	tree_helper.script_list_manager = script_list_manager # not sure this is needed?
-	
-	tree_helper.mouse_left_clicked.connect(_on_item_left_clicked)
-	tree_helper.mouse_right_clicked.connect(_on_item_right_clicked)
-	
-	FileSystemSingleton.call_on_ready(_on_fs_ready)
+func _init() -> void:
+	multi_select = false
 
 func _on_fs_ready():
+	filter_line_edit.placeholder_text = "Filter Scripts"
+	
 	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
 	_on_file_system_changed()
 	
@@ -85,104 +49,69 @@ func get_options():
 		flat_icon = "FileTree"
 	
 	options.add_option("Flat View (%s)" % _flat_view, _set_flat_view.bind(not _flat_view), [flat_icon])
+	var show_all = file_extensions.is_empty()
+	options.add_option("Show All Files Types (%s)" % show_all, _set_show_all_files.bind(not show_all), ["File"])
+	options.add_option("Show Empty Dirs (%s)" % show_empty_dirs, _set_show_empty_dirs.bind(not show_empty_dirs), ["Folder"])
+	options.add_option("Show Favorites (%s)" % show_favorites, _set_show_favorites.bind(not show_favorites), [FileSystemSingleton.get_favorites_icon()])
 	return options
 
 
 func set_tab_data(data:Dictionary):
-	root_dir = data.get(ScriptTreeKeys.ROOT_DIR, "res://")
-	_flat_view = data.get(ScriptTreeKeys.FLAT_VIEW, false)
+	set_persistent_data(data)
 
 func get_tab_data() -> Dictionary:
-	var data = {
-		ScriptTreeKeys.ROOT_DIR: root_dir,
-		ScriptTreeKeys.FLAT_VIEW: _flat_view
-	}
-	return data
-
-func _set_flat_view(state:bool):
-	_flat_view = state
-	_build_tree()
+	return get_persistent_data()
 
 
-func _on_file_system_changed():
-	#_script_data = {} # why is this clearing?
-
-	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
-	_set_current_files()
-	
-	var t = ALibRuntime.Utils.UProfile.TimeFunction.new("fs changed: " + root_dir)
-
-	_build_tree()
-	#t.stop()
-	
-	if selected != null:
-		for path in tree_helper.item_dict.keys():
-			if path == selected:
-				var item = tree_helper.item_dict[path] as TreeItem
-				item.select(0)
-				break
-	
-	
-
-func set_root_dir(root:String):
-	root_dir = root
-	_set_current_files()
-	_build_tree()
-
-func _set_current_files():
-	if root_dir == "res://":
-		current_files = filesystem_singleton.get_paths_of_ext(ScriptListManager.get_text_file_types())
+func _set_show_all_files(state:bool):
+	if state:
+		file_extensions = []
 	else:
-		current_files.clear()
-		var files = filesystem_singleton.get_files_in_dir(root_dir)
-		for f in files:
-			if f.get_extension() in ScriptListManager.get_text_file_types():
-				current_files.append(f)
+		file_extensions = ScriptListManager.get_text_file_types()
+	_refresh_files_and_tree()
 
 
-func _build_tree():
-	tree_helper.clear_items()
+func _custom_right_click_menu(items:Dictionary, selected_path:String, selected_paths:Array):
+	if immutable:
+		items["pre"].clear()
 	
-	var root = script_tree.create_item()
-	var root_text = root_dir
-	if root_text != "res://":
-		root_text = root_text.trim_suffix("/").get_file()
-	root.set_text(0, root_text)
-	root.set_icon(0, tree_helper.folder_icon)
-	tree_helper.set_folder_icon(root_dir, root)
-	
-	for f in current_files:
-		var script_data = _get_script_data(f)
-		if not _flat_view:
-			var _last_item = tree_helper.new_file_path(f, root_dir, script_data)
-		else:
-			var item = script_tree.create_item(root)
-			item.set_text(0, f.get_file())
-			item.set_tooltip_text(0, f)
-			item.set_metadata(0, {TreeHelperBase.Keys.METADATA_PATH: f})
-			tree_helper.set_item_icon(item, script_data)
-			tree_helper.item_dict[f] = item
-			
-	
-	_update_tree_items()
+	if selected_path.ends_with("/"):
+		items["pre"][NEW_TAB] = {
+				PopupWrapper.ItemParams.ICON: ["TabContainer"],
+				PopupWrapper.ItemParams.ICON_COLOR: [Color(5,5,5)],
+				PopupWrapper.ItemParams.METADATA: {"selected": selected_path}
+			}
+
+func _handle_custom_popup_id(id, popup):
+	var menu_path = PopupWrapper.PopupHelper.parse_menu_path(id, popup)
+	var meta = PopupWrapper.PopupHelper.parse_metadata(id, popup)
+	var selected = meta.get("selected")
+	match menu_path:
+		NEW_TAB: _on_new_tab_pressed(selected)
 
 
-func _get_script_data(file_path:String):
-	var cached = CacheHelper.get_cached_data(file_path, _script_data_cache)
-	if cached != null:
-		return cached
+func _get_file_data(file_path:String):
+	var data = CacheHelper.get_cached_data(file_path, _script_data_cache)
 	
-	var data = {}
-	data[ScriptTreeKeys.SCRIPT_PATH] = file_path
+	if data == null:
+		data = {}
+	
+	data[ItemKeys.PATH] = file_path
+	data[ItemKeys.ICON_COLOR] = Color.WHITE
+	
+	
 	if file_path.get_extension() == "gd":
-		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = UGDScript.FileRead.get_is_tool(file_path)
-	elif file_path.get_extension() == "cs":
-		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = false
-	else:
-		data[ScriptTreeKeys.SCRIPT_IS_TOOL] = false
-		
-	#data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_type_icon(file_path)
-	data[ScriptTreeKeys.SCRIPT_ICON] = filesystem_singleton.get_file_type(file_path)
+		var is_tool = data.get(&"is_tool", UGDScript.FileRead.get_is_tool(file_path))
+		if is_tool:
+			data[ItemKeys.ICON_COLOR] = EditorColors.get_tool_script_color()
+	
+	#data.
+	if not data.has(ItemKeys.ICON):
+		data[ItemKeys.ICON] = filesystem_singleton.get_type_icon(file_path)
+	if not data.has(ItemKeys.PREVIEW) and not file_path.get_extension() in ScriptListManager.get_text_file_types():
+		var prev = FileSystemSingleton.get_preview(file_path)
+		if prev is Dictionary:
+			data[ItemKeys.PREVIEW] = prev.get(FileData.Preview.PREVIEW)
 	
 	#print(file_path,"::TOOL::", data[ScriptTreeKeys.SCRIPT_IS_TOOL] )
 	CacheHelper.store_data(file_path, data, _script_data_cache, [file_path])
@@ -196,105 +125,41 @@ func _on_item_left_clicked():
 	_select_or_open_in_script_list()
 
 func _on_item_right_clicked():
-	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
-	if selected == "res://" or selected == null:
+	var selection = _get_selection()
+	var selected = selection.selected
+	if selected == null:
 		return
+	if selected == FileData.FAVORITES_META:
+		return
+	
 	if Input.is_key_pressed(KEY_CTRL) and selected.get_extension() in ScriptListManager.get_text_file_types():
 		_select_or_open_in_script_list(true)
-		
-	elif selected.ends_with("/"):
-		var options = Options.new()
-		options.add_option("New Tab", _on_new_tab_pressed.bind(selected), ["TabContainer"])
-		right_click_handler.display_popup(options)
+	else: # ideally put a open in new script tab into fs menu
+		FileSystemSingleton.show_right_click_menu(self, selected, [selected])
+
 
 func _on_new_tab_pressed(selected_path:String):
 	create_new_tab.emit(selected_path)
 
 
+
 func _select_or_open_in_script_list(right_click:=false):
 	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
+	#print(selected)
 	if selected != null:
-		var sl_idx = script_list_manager.get_script_index_or_open(selected, filesystem_singleton)
-		if sl_idx != -1:
-			script_list_manager.activate_item_by_idx(sl_idx)
-			if right_click:
-				var location = DisplayServer.mouse_get_position()
-				script_list_manager.right_click_by_idx(sl_idx, location)
-
-
-func _on_filter_line_text_changed(_new_text:String):
-	_update_tree_items()
-
-func _update_tree_items():
-	tree_helper.update_tree_items(_is_filtering(), _filter_text)#, root_dir)
-
-func _filter_text(to_filter:String):
-	var use_file_name = true # should be a setting?
-	if use_file_name:
-		to_filter = to_filter.trim_suffix("/").get_file()
-	return filter_line_edit.text.is_subsequence_of(to_filter)
-
-func _is_filtering():
-	return filter_line_edit.text != ""
-
-
-func _on_script_tree_get_drag_data(at_position: Vector2) -> Variant:
-	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
-	if selected == null:
-		return
-	return {"type":"files", "files": [selected], "from":self}
-
-class ScriptTreeHelper extends TreeHelperBase:
-	
-	var script_list_manager:ScriptListManager # erase?
-	
-	var filesystem_singleton:FileSystemSingleton
-	var tool_color:Color
-	var thumbnail_size:float = 16
-	var show_files:bool = true
-	
-	var _icon_dict:= {}
-
-	func set_thumbnail_size():
-		thumbnail_size = 16 * EditorInterface.get_editor_scale()
-
-
-	func _set_folder_icon_img():
-		var base_ctrl = EditorInterface.get_base_control()
-		folder_icon = base_ctrl.get_theme_icon(&"Folder", &"EditorIcons")
-		folder_color = base_ctrl.get_theme_color(&"folder_icon_color", &"FileDialog")
-	
-	func set_folder_icon(file_path:String, item:TreeItem):
-		_set_folder_icon(file_path, item)
-
-	func _set_folder_icon(file_path:String, slice_item:TreeItem):
-		var icon = filesystem_singleton.get_type_icon(file_path)
-		slice_item.set_icon(0, icon)
-		var color = filesystem_singleton.get_folder_color(file_path)
-		if color:
-			slice_item.set_icon_modulate(0, color)
-		var bg_color = filesystem_singleton.get_background_color(file_path)
-		if bg_color:
-			slice_item.set_custom_bg_color(0, bg_color)
-	
-	# for use with flat view
-	func set_item_icon(item:TreeItem, file_data:Dictionary):
-		_set_item_icon(item, file_data)
-	
-	func _set_item_icon(last_item:TreeItem, file_data:Dictionary):
-		last_item.set_icon(0, _get_icon(file_data.get(ScriptTreeKeys.SCRIPT_ICON)))
-		if file_data.get(ScriptTreeKeys.SCRIPT_IS_TOOL, false) == true:
-			last_item.set_icon_modulate(0, tool_color)
+		if not selected.get_extension() in ScriptListManager.get_text_file_types():
+			FileSystemSingleton.activate_path(selected)
 		else:
-			last_item.set_icon_modulate(0, Color.WHITE)
-	
-	func _get_icon(icon_name:String):
-		if not _icon_dict.has(icon_name):
-			if EditorInterface.get_editor_theme().has_icon(icon_name, &"EditorIcons"):
-				_icon_dict[icon_name] = EditorInterface.get_editor_theme().get_icon(icon_name, &"EditorIcons")
-			else:
-				_icon_dict[icon_name] = EditorInterface.get_editor_theme().get_icon(&"File", &"EditorIcons")
-		return _icon_dict[icon_name]
+			var sl_idx = script_list_manager.get_script_index_or_open(selected, filesystem_singleton)
+			if sl_idx != -1:
+				script_list_manager.activate_item_by_idx(sl_idx)
+				if right_click:
+					var location = DisplayServer.mouse_get_position()
+					script_list_manager.right_click_by_idx(sl_idx, location)
+
+
+
+
 
 
 
@@ -307,3 +172,4 @@ class ScriptTreeKeys:
 	
 	const ROOT_DIR = &"script_tree.root_dir"
 	const FLAT_VIEW = &"script_tree.flat_view"
+	const SHOW_ALL_FILES = &"script_tree.show_all_files"

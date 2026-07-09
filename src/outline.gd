@@ -285,8 +285,6 @@ func _on_caret_changed():
 func _on_tree_built():
 	if not _follow_cursor: # not sure about this...
 		_set_current_access_path(true)
-	var my_var
-	pass
 
 func _on_infer_queue_finished():
 	_build_breadcrumb()
@@ -436,6 +434,8 @@ class OutlineTree extends Tree:
 		var class_items = {}
 		var _root = create_item()
 		var gdscript_parser = EditorGDScriptParser.get_parser()
+		if not is_instance_valid(gdscript_parser):
+			return
 		var classes = gdscript_parser.get_classes()
 		if classes.is_empty():
 			return
@@ -657,8 +657,6 @@ class OutlineTree extends Tree:
 					class_items[lv_access_path] = lv_item
 					
 					var line_index = lv_full_name.get_slice("-", 1).to_int()
-					var line_col = lv_full_name.get_slice("-", 2).to_int()
-					
 					var lv_suffix = ""
 					if lv_member_type == ParserKeys.MEMBER_TYPE_FOR:
 						lv_suffix += "[for loop]"
@@ -666,8 +664,6 @@ class OutlineTree extends Tree:
 						lv_suffix += MemberData.ITEM_LINE_STR % line_index
 					if not lv_suffix.is_empty():
 						lv_suffix = OutlineKeys.SUFFIX_SPACE + lv_suffix
-					
-					
 					
 					lv_item.set_text(0, lv_name + lv_suffix)
 					var lv_meta:Dictionary = { # this will need a column too if their are multiple in line?
@@ -698,7 +694,7 @@ class OutlineTree extends Tree:
 		
 		tree_built.emit()
 		
-		if not PLUGIN_EXPORTED:
+		if PRINT_DEBUG:
 			t.stop()
 			pass
 		
@@ -759,6 +755,10 @@ class OutlineTree extends Tree:
 		var t = GDScriptParser.TF.new("INFER QUEUE TOTAL")
 		
 		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
+		if not is_instance_valid(gdscript_parser):
+			_clear_infer_queue()
+			return
+		
 		var count:int = 0
 		
 		# pseudo setting
@@ -1635,6 +1635,9 @@ class MemberData:
 				class_access = ""
 		
 		var gdscript_parser = EditorGDScriptParser.get_parser()
+		if not is_instance_valid(gdscript_parser):
+			return null
+		
 		var class_obj = gdscript_parser.get_class_object(class_access)
 		return class_obj
 	

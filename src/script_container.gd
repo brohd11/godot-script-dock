@@ -94,6 +94,8 @@ func _build_nodes():
 	if not is_instance_valid(script_tree):
 		script_tree = _new_tab(TabType.TREE)
 	
+	script_tree.immutable = true
+	
 	base_tabs = [script_list, script_tree]
 	
 	var tab_bar = tab_bar_container.get_tab_bar()
@@ -139,17 +141,16 @@ func get_options():
 
 func _on_tab_rmb_clicked(tab:int):
 	var control = tab_bar_container.get_tab_control(tab)
-	if control in base_tabs:
-		return
 	var options = Options.new()
-	if _title_mode != TitleMode.ALL_ICONS:
-		options.add_option("Rename", _on_tab_rename.bind(tab), ["Rename"])
-	
-	var icon_base_icon = EditorInterface.get_editor_theme().get_icon(&"Image", &"EditorIcons")
-	for icon_name in ["Node", "Node2D", "Node3D", "Folder"]:
-		options.add_option("Set Icon/" + icon_name, _on_tab_set_icon.bind(tab, icon_name), [icon_base_icon, icon_name])
-	options.add_option("Set Icon/Editor Icon..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
-	options.add_option("Set Icon/Open..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
+	if not control in base_tabs:
+		if _title_mode != TitleMode.ALL_ICONS:
+			options.add_option("Rename", _on_tab_rename.bind(tab), ["Rename"])
+		
+		var icon_base_icon = EditorInterface.get_editor_theme().get_icon(&"Image", &"EditorIcons")
+		for icon_name in ["Node", "Node2D", "Node3D", "Folder"]:
+			options.add_option("Set Icon/" + icon_name, _on_tab_set_icon.bind(tab, icon_name), [icon_base_icon, icon_name])
+		options.add_option("Set Icon/Editor Icon..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
+		options.add_option("Set Icon/Open..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
 	
 	if control.has_method(&"get_options"):
 		options.merge(control.get_options())

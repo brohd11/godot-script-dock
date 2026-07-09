@@ -28,6 +28,8 @@ const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.
 const RightClickHandler = preload("res://addons/addon_lib/brohd/gui_click_handler/right_click_handler.gd") #! resolve ClickHandlers.RightClickHandler
 const Options = preload("res://addons/addon_lib/brohd/alib_runtime/popup_menu/popup_options.gd") #! resolve ALibRuntime.Popups.Options
 
+const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/simple_components/fs_tree.gd")
+
 const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
 
 
