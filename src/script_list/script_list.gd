@@ -1,5 +1,6 @@
 extends VBoxContainer
 
+const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
 
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const SLKeys = ScriptListManager.Keys
@@ -35,6 +36,8 @@ func _ready() -> void:
 	item_list.item_clicked.connect(_on_item_clicked)
 	item_list.select_mode = ItemList.SELECT_SINGLE
 	
+	UtilsLocal.set_item_list_sb(item_list)
+	
 	_on_cache_updated()
 
 func _on_cache_updated():
@@ -45,6 +48,7 @@ func _build_list():
 	if not is_instance_valid(script_list_manager.current_script_editor):
 		item_list.clear() # means there are no editors present
 		return
+	
 	var selected_idx = script_list_manager.current_script_editor.get_index()
 	item_list.clear()
 	var item_cache = script_list_manager.item_cache

@@ -210,7 +210,7 @@ func _set_cache_dirty():
 
 func _on_editor_script_changed(script:GDScript):
 	outline_tree.right_click_handler = right_click_handler # TEMP
-	
+	_reset_breadcrumb()
 	if not is_instance_valid(script):
 		outline_tree.clear()
 		_current_script_path = ""
@@ -227,6 +227,8 @@ func _on_editor_script_changed(script:GDScript):
 	var current_script_data = _tree_script_item_data.get_or_add(_current_script_path, {})
 	outline_tree.current_script_item_data = current_script_data
 	_build_tree.call_deferred() # maybe set a flag? if deferred doesn't work
+	#_build_tree()
+	#EditorGDScriptParser.queue_parse(true)
 
 
 func _on_file_system_changed():
@@ -290,7 +292,7 @@ func _on_infer_queue_finished():
 	_build_breadcrumb()
 
 
-func _build_breadcrumb(current_access_path:String="null"):
+func _build_breadcrumb(current_access_path:String="null", force_rebuild:=false):
 	if current_access_path == "null":
 		current_access_path = MemberData.get_current_access_path()
 	
@@ -298,10 +300,12 @@ func _build_breadcrumb(current_access_path:String="null"):
 	
 	var full_breadcrumb = _get_selected_breadcrumb(true)
 	var trimmed_current_access = current_access_path.get_slice("-", 0) # ensure local var fluff is not here for breadcrumb check
-	var keep_tabs =  full_breadcrumb.begins_with(trimmed_current_access)
+	var keep_tabs = not force_rebuild and full_breadcrumb.begins_with(trimmed_current_access)
+	
 	#print("KEEP::", keep_tabs, "::CURR::", current_access_path, "::BREAD::", full_breadcrumb)
 	if current_access_path == "null":
-		return
+		keep_tabs = false
+		current_access_path = ""
 	
 	if keep_tabs:
 		for i in range(_bread_crumb_tabs.get_section_count()):
@@ -336,6 +340,11 @@ func _build_breadcrumb(current_access_path:String="null"):
 			_bread_crumb_tabs.set_section_metadata(_bread_crumb_tabs.get_section_count() - 1, working_path)
 		
 		_bread_crumb_tabs.select_section(_bread_crumb_tabs.get_section_count() - 1)
+
+func _reset_breadcrumb():
+	_build_breadcrumb("", true)
+	
+	pass
 
 func _on_breadcrumb_selected(sel:int) -> void:
 	var access_path = _bread_crumb_tabs.get_section_metadata(sel)
@@ -444,6 +453,7 @@ class OutlineTree extends Tree:
 		
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
+			#print( class_obj.get_members())
 			var class_base_type = class_obj.script_base_type
 			
 			var item_parent:TreeItem
@@ -775,6 +785,9 @@ class OutlineTree extends Tree:
 		#gdscript_parser.parse()
 		# TEST
 		
+		var code_edit = gdscript_parser.get_code_edit_parser().code_edit
+		var line_count = code_edit.get_line_count()
+		
 		var inc_t = GDScriptParser.TF.new("Infer Queue", GDScriptParser.TF.TimeScale.USEC, false)
 		inc_t.iterations = 50
 		inc_t.start()
@@ -792,7 +805,8 @@ class OutlineTree extends Tree:
 			if item_metadata.get(ParserKeys.LINE_INDEX, -1) is String:
 				printerr("LINE INDEX IS STRING:",item_metadata)
 			var line_index:int = item_metadata.get(ParserKeys.LINE_INDEX, -1)
-			
+			if line_index >= line_count:
+				continue
 			var access_path:String = item_data.get(ParserKeys.ACCESS_PATH)
 			var member_name:String = item_data.get(OutlineKeys.NAME)
 			var local_var_name:String = item_metadata.get(OutlineKeys.LOCAL_VAR_NAME, "")
@@ -1043,10 +1057,19 @@ class OutlineTree extends Tree:
 		label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		
 		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
+		var code_edit = gdscript_parser.get_code_edit_parser().code_edit
 		var access_path:String = meta.get(ParserKeys.ACCESS_PATH)
 		var persisitent_data:Dictionary = get_item_persistent_data(access_path)
 		
+		var pr = Pr.new()
+		
 		var line_index = meta.get(ParserKeys.LINE_INDEX, -1)
+		if line_index > code_edit.get_line_count():
+			pr.append("Line index not valid")
+			label.text = pr.get_string()
+			label.custom_minimum_size = _get_panel_size(pr, label)
+			return panel
+		
 		var item_type = meta.get(OutlineKeys.ITEM_TYPE)
 		var is_arg = item_type == OutlineKeys.ITEM_TYPE_ARG
 		var is_local = is_arg or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR
@@ -1078,7 +1101,7 @@ class OutlineTree extends Tree:
 			
 			member_type = member_data.get(ParserKeys.MEMBER_TYPE)
 		
-		var pr = Pr.new()
+		
 		
 		if is_main_class or member_type == ParserKeys.MEMBER_TYPE_CLASS:
 			var inner_access_path = ""
@@ -1278,6 +1301,9 @@ class OutlineTree extends Tree:
 		var item_meta:Dictionary = item.get_metadata(0) as Dictionary
 		var item_type:String = item_meta.get(OutlineKeys.ITEM_TYPE)
 		var line_index:int = item_meta.get(ParserKeys.LINE_INDEX, -1)
+		
+		if line_index > code_edit.get_line_count():
+			return
 		
 		var member_data:Dictionary
 		if item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR or item_type == OutlineKeys.ITEM_TYPE_ARG:
@@ -1614,6 +1640,8 @@ class MemberData:
 	
 	static func get_main_script_name():
 		var gdscript_parser = EditorGDScriptParser.get_parser()
+		if not is_instance_valid(gdscript_parser):
+			return "Non-Script"
 		if gdscript_parser.get_global_class_name() != "":
 			return gdscript_parser.get_global_class_name()
 		return gdscript_parser.get_script_path().get_file()

@@ -2,6 +2,7 @@ extends VBoxContainer
 
 const Self = preload("res://addons/script_outline/src/script_list/collection.gd")
 
+const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
 const ScriptListManager = UtilsRemote.ScriptListManager
@@ -10,13 +11,27 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
 const UFile = UtilsRemote.UFile
+const UName = UtilsRemote.UName
 const UResource = UtilsRemote.UResource
 const UGDScript = UtilsRemote.UGDScript
 
-const TEXT_FILE_TYPES = ScriptListManager.TEXT_FILE_TYPES
+const CollectionSingleton = preload("res://addons/addon_lib/brohd/collections/collection_singleton.gd")
+const CollectionManager = CollectionSingleton.CollectionManager
+const CollectionBase = CollectionManager.CollectionBase
+const Form = CollectionSingleton.Form
+
+const CacheHelper = UtilsRemote.CacheHelper
+const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/simple_components/fs_tree.gd")
+const ItemKeys = FSTree.ItemKeys
+
+
+const COL_MANAGER_NAME = &"script_outline"
+var col_storage_dir:String = "res://.addons/script_outline/collections/"
 
 var filesystem_singleton:FileSystemSingleton
 var script_list_manager:ScriptListManager
+
+var _script_data_cache:= {}
 
 var right_click_handler:RightClickHandler
 
@@ -27,9 +42,13 @@ var current_filter_text:String = ""
 
 var collection_data:Dictionary = {}
 
+var current_collection:CollectionBase
+
+signal collection_update(collection_tab:Self)
+signal show_in_filesystem(path:String)
 
 func _init() -> void:
-	name = "Collection"
+	name = "unsaved"
 
 func _ready() -> void:
 	script_list_manager = ScriptListManager.get_instance()
@@ -51,11 +70,19 @@ func _ready() -> void:
 	item_list.select_mode = ItemList.SELECT_SINGLE
 	item_list.set_drag_forwarding(_item_list_get_drag_data, _item_list_can_drop_data, _item_list_drop_data)
 	
+	UtilsLocal.set_item_list_sb(item_list)
+	
 	filesystem_singleton = FileSystemSingleton.get_instance()
 	FileSystemSingleton.call_on_ready(_on_fs_ready)
 
 func _on_fs_ready():
 	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
+	
+	var man = _get_col_manager()
+	man.collections_updated.connect(_on_collections_updated)
+	if not is_instance_valid(current_collection):
+		current_collection = man.new_collection(name, false) # name should be unsaved_x
+	
 	_build_list()
 
 func _on_file_system_changed():
@@ -64,17 +91,21 @@ func _on_file_system_changed():
 func build_list():
 	_build_list()
 
+func _on_collections_updated():
+	_build_list()
+
 func _build_list():
+	var selected_idxes = item_list.get_selected_items()
+	var selected_idx = -1
+	var selected_uid = ""
+	if selected_idxes.size() > 0:
+		selected_uid = get_item_uid(selected_idxes[0])
+	
 	var filtering = current_filter_text != ""
 	item_list.clear()
 	
-	var uids = collection_data.keys()
-	uids.sort_custom(
-		func(a,b):
-			return collection_data[a].get(Keys.IDX) < collection_data[b].get(Keys.IDX)
-	)
-	
-	#sort display names like script list
+	#print(current_collection, current_collection.get_uids())
+	var uids = current_collection.get_uids(true)
 	var display_names = _get_display_names(false)
 	for uid in uids:
 		var data = display_names.get(uid)
@@ -85,14 +116,136 @@ func _build_list():
 		
 		data[Keys.UID] = uid
 		var path = data.get(Keys.PATH)
+		
+		
+		
 		var idx = item_list.item_count
-		var icon = filesystem_singleton.get_type_icon(path)
-		item_list.add_item(display_name, icon)
-		if UGDScript.FileRead.get_is_tool(path):
-			item_list.set_item_icon_modulate(idx, script_list_manager.tool_color)
+		if not selected_uid.is_empty() and uid == selected_uid:
+			selected_idx = idx
+		
+		var file_data = UtilsLocal.get_file_data(path, _script_data_cache)
+		item_list.add_item(display_name, file_data.get(ItemKeys.ICON))
+		item_list.set_item_icon_modulate(idx, file_data.get(ItemKeys.ICON_COLOR))
 		item_list.set_item_metadata(idx, data)
 		item_list.set_item_tooltip(idx, path)
+	
+	if selected_idx > -1:
+		item_list.select(selected_idx)
 
+
+func get_options():
+	var options = Options.new()
+	var man = _get_col_manager()
+	options.add_option("New Collection", _new_collection, ["New"])
+	for col in man.get_collections():
+		var col_name = col.get_collection_name()
+		var label = "Load Collection".path_join(col_name)
+		if col == current_collection:
+			label += " (current)"
+		options.add_option(label, _load_collection.bind(col_name), ["ThemeSelectAll", null])
+	
+	if not man.has_collection_object(current_collection):
+		options.add_option("Save Collection", _save_collection, ["Save"])
+	else:
+		options.add_option("Rename Collection", _rename_collection, ["Edit"])
+	return options
+
+
+func set_tab_data(data:Dictionary):
+	var man = _get_col_manager()
+	var current_col_name = data.get(Keys.CURRENT_COLLECTION, "")
+	var current_col_data = data.get(Keys.COLLECTION_DATA, {})
+	if not current_col_data.is_empty() or not man.has_collection(current_col_name):
+		current_collection = man.new_collection(current_col_name, false)
+		current_collection.set_data(current_col_data)
+	else:
+		current_collection = man.get_collection(current_col_name)
+	
+
+func get_tab_data() -> Dictionary:
+	var man = _get_col_manager()
+	var data = {}
+	data[Keys.CURRENT_COLLECTION] = current_collection.get_collection_name()
+	if not man.has_collection_object(current_collection):
+		data[Keys.COLLECTION_DATA] = current_collection.get_data()
+	return data
+
+
+#region Collection
+
+func _new_collection():
+	var man = _get_col_manager()
+	current_collection = man.new_collection("", false)
+	collection_update.emit(self)
+	_build_list()
+
+func _load_collection(col_name:String):
+	var man = _get_col_manager()
+	current_collection = man.get_collection(col_name)
+	collection_update.emit(self)
+	_build_list()
+
+func _save_collection():
+	var man = _get_col_manager()
+
+	var new_name = await _name_collection_form("New Collection", "New Collection Name")
+	if new_name.is_empty():
+		return
+	
+	current_collection.set_collection_name(new_name)
+	
+	man.add_collection(current_collection)
+	man.save_collection(current_collection)
+	#man.save_collection()
+	collection_update.emit(self)
+
+func _rename_collection():
+	var man = _get_col_manager()
+
+	var new_name = await _name_collection_form("Rename Collection", "New Collection Name")
+	if new_name.is_empty():
+		return
+	var success = man.rename_collection(current_collection, new_name)
+	if success:
+		collection_update.emit(self)
+
+func _try_save_collection():
+	var man = _get_col_manager()
+	if man.has_collection_object(current_collection):
+		man.save_collection(current_collection)
+
+func _get_col_manager() -> CollectionManager:
+	col_storage_dir = "res://.addons/script_outline/collections/"
+	return CollectionSingleton.get_named_manager({
+		&"manager_name": COL_MANAGER_NAME,
+		&"storage_dir": col_storage_dir
+	})
+
+func _name_collection_form(title:String, field:String) -> String:
+	var form_data = Form.Data.new_data({
+		&"title": title,
+		&"size": Vector2(400, 100) * EditorInterface.get_editor_scale(),
+		field: Form.Data.line_edit({
+			&"placeholder": "Enter name...",
+		}),
+	})
+	
+	var result = await Form.construct_and_display(form_data)
+	if Form.was_cancelled(result) or (result is String and result.is_empty()):
+		return ""
+	
+	var new_name = result.get(field, "")
+	new_name = new_name.trim_prefix("/").trim_suffix("/")
+	var man = _get_col_manager()
+	if new_name in man.collections.keys():
+		printerr("Collection already exists.")
+		return ""
+	return new_name
+
+#endregion
+
+
+#region Drag Data
 
 func _item_list_get_drag_data(at_pos:Vector2):
 	#if not Input.is_key_pressed(KEY_CTRL):
@@ -113,10 +266,10 @@ func _item_list_can_drop_data(_at_position: Vector2, data: Variant) -> bool:
 	
 	return _check_new_files_in_array(files)
 
-
 func _item_list_drop_data(at_position: Vector2, data: Variant) -> void:
 	var files = data.get("files")
 	var from = data.get("from")
+	var file_types = ScriptListManager.get_text_file_types()
 	if from is Self:
 		var file_path = files[0]
 		var from_idx = data.get(Keys.DROP_DATA_FROM_IDX)
@@ -124,57 +277,32 @@ func _item_list_drop_data(at_position: Vector2, data: Variant) -> void:
 		var uid = item_data.get(Keys.UID)
 		var new_idx = min(item_list.get_item_at_position(at_position), item_list.item_count - 1)
 		if from != self:
-			from.collection_data.erase(uid)
+			from.current_collection.remove_file(uid)
 			from.build_list()
-			from.reindex_items()
 		
-		if not collection_data.has(uid):
-			item_data[Keys.IDX] = collection_data.size()
-			collection_data[uid] = item_data
-		
+		add_path(uid)
 		_move_item(uid, new_idx)
 	else:
 		for f in files:
-			if f.get_extension() in TEXT_FILE_TYPES:
+			if f.get_extension() in file_types:
 				add_path(f)
 	
+	_try_save_collection()
 	_build_list()
-	reindex_items()
-
 
 func _check_new_files_in_array(files:Array):
+	var uids = current_collection.get_uids()
+	var file_types = ScriptListManager.get_text_file_types()
 	for f in files:
 		var uid = UFile.path_to_uid(f)
-		if not collection_data.has(uid) and f.get_extension() in TEXT_FILE_TYPES:
+		if not uid in uids and f.get_extension() in file_types:
 			return true
 	return false
 
-func _move_item(uid_to_move: String, new_idx: int):
-	if not collection_data.has(uid_to_move): # check if item exists to avoid crashes
-		printerr("UID not found: ", uid_to_move)
-		return
-	
-	var uid_to_move_data = collection_data[uid_to_move]
-	var old_idx = uid_to_move_data.get(Keys.IDX)
-	new_idx = clamp(new_idx, 0, collection_data.size() - 1) # Prevent out-of-bounds indexes
-	if old_idx == new_idx: # if the index didn't actually change, do nothing
-		return
-	uid_to_move_data[Keys.IDX] = new_idx # apply the new index to the target item
-	
-	for uid in collection_data: # shift all other affected items
-		if uid == uid_to_move: # skip the item moved
-			continue
-		
-		var item_data = collection_data[uid]
-		var current_idx = item_data.get(Keys.IDX)
-		if old_idx < new_idx: # moving the item "down" the list (e.g., Index 1 -> 4) ie. 2 -> 1, 3 -> 2
-			if current_idx > old_idx and current_idx <= new_idx:
-				item_data[Keys.IDX] = current_idx - 1
-		
-		elif old_idx > new_idx: # moving the item "up" the list (e.g., Index 4 -> 1) ie. 1 -> 2, 2 -> 3
-			if current_idx >= new_idx and current_idx < old_idx:
-				item_data[Keys.IDX] = current_idx + 1
+#endregion
 
+
+#region Click
 
 func _on_item_activated(idx:int):
 	var path = get_item_path(idx)
@@ -193,6 +321,58 @@ func _on_item_clicked(idx:int, pos:Vector2, mouse_button:int):
 		else:
 			_open_or_activate_path(path, true, pos)
 
+func _custom_right_click():
+	var options = Options.new()
+	var idx = get_selected_item()
+	var path = get_item_path(idx)
+	
+	var script_tabs = _get_script_tabs_node()
+	if is_instance_valid(script_tabs):
+		var valid_containers = script_tabs.get_valid_containers_for_path(path, _open_in_split)
+		options._dict.merge(valid_containers)
+	
+	
+	
+	options.add_option("Copy Script Path", _copy_to_clipboard, ["ActionCopy"])
+	options.add_option("Copy Script UID", _copy_to_clipboard.bind(true))
+	options.add_separator()
+	options.add_option("Show in Tree", _navigate_to, ["ShowInFileSystem"])
+	options.add_option("Show in File Manager", _navigate_to.bind(true), ["Filesystem"])
+	options.add_separator()
+	options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
+	
+	
+		
+	
+	right_click_handler.display_popup(options)
+
+func _open_in_split(target_tab:int):
+	var item = get_selected_item()
+	if item > -1:
+		var script_tabs = _get_script_tabs_node()
+		if not is_instance_valid(script_tabs):
+			printerr("No ScriptTab singleton found. How did you get here?")
+			return
+		var path = get_item_path(item)
+		script_tabs.open_script(path, target_tab, filesystem_singleton)
+
+func _copy_to_clipboard(uid:=false):
+	var item = get_selected_item()
+	if item > -1:
+		var to_clip = get_item_uid(item) if uid else get_item_path(item)
+		DisplayServer.clipboard_set(to_clip)
+
+func _navigate_to(os_file:=false):
+	var item = get_selected_item()
+	if item > -1:
+		var path = get_item_path(item)
+		if os_file:
+			OS.shell_show_in_file_manager(ProjectSettings.globalize_path(path))
+		else:
+			show_in_filesystem.emit(path)
+			#EditorInterface.get_file_system_dock().navigate_to_path(path)
+
+
 func _open_or_activate_path(path:String, right_click:=false, click_pos:=Vector2()):
 	if not FileAccess.file_exists(path):
 		printerr("Script Outline - Collection - File does not exist: ", path)
@@ -203,65 +383,59 @@ func _open_or_activate_path(path:String, right_click:=false, click_pos:=Vector2(
 		if right_click:
 			script_list_manager.right_click_by_idx(script_idx, click_pos)
 
+#endregion
+
+
 func _on_filter_line_text_changed(new_text:String):
 	current_filter_text = new_text
 	_build_list()
 
-func _custom_right_click():
-	var options = Options.new()
-	options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
-	right_click_handler.display_popup(options)
-
-
-func _remove_item(idx:int):
-	var metadata = item_list.get_item_metadata(idx)
-	var uid = metadata.get(Keys.UID)
-	item_list.remove_item(idx)
-	collection_data.erase(uid)
-	reindex_items()
-
+func get_selected_item():
+	var items = item_list.get_selected_items()
+	if items.is_empty():
+		return
+	return items[0]
 
 func get_item_path(idx:int):
 	var data = item_list.get_item_metadata(idx)
 	return data.get(Keys.PATH)
 
+func get_item_uid(idx:int):
+	var data = item_list.get_item_metadata(idx)
+	return data.get(Keys.UID)
+
+#region List Items
 
 func add_path(path:String):
-	var uid = UFile.path_to_uid(path)
-	if not collection_data.has(uid):
-		var next_idx = collection_data.size()
-		collection_data[uid] = {
-			Keys.IDX: next_idx,
-			Keys.PATH: path,
-			}
+	current_collection.new_file(path)
+
+func _move_item(uid_to_move: String, new_idx: int):
+	var file_data = current_collection.get_file_data(uid_to_move)
+	var old_index = file_data.index
+	print(file_data)
+	current_collection.move_file(old_index, new_idx)
+
+func _remove_item(idx:int):
+	var metadata = item_list.get_item_metadata(idx)
+	var uid = metadata.get(Keys.UID)
+	current_collection.remove_file(uid)
+	item_list.remove_item(idx)
+
+#endregion
 
 
 
-func set_tab_data(data:Dictionary):
-	collection_data.clear()
-	var col_data = data.get(Keys.DATA, {})
-	for uid in col_data.keys():
-		var uid_data = col_data[uid]
-		collection_data[uid] = {
-			Keys.IDX: int(uid_data.get(Keys.IDX)),
-			Keys.PATH: uid_data.get(Keys.PATH)
-		}
-
-func get_tab_data() -> Dictionary:
-	var data = {
-		Keys.DATA: collection_data
-	}
-	return data
 
 func _get_display_names(sort:=true) -> Dictionary:
 	var item_data: Dictionary = {}
 	var groups: Dictionary = {}
 	
-	for uid in collection_data.keys(): # --- STEP 1: Parse paths and group by file name ---
-		var data = collection_data[uid]
+	var col_data = current_collection.get_data()
+	for uid in current_collection.get_uids(true): # --- STEP 1: Parse paths and group by file name ---
+		var data = col_data[uid]
 		var p = UFile.uid_to_path(uid)
 		if p == "":
-			p = data.get(Keys.PATH)
+			p = data.get(CollectionBase.Keys.PATH)
 		
 		var parts = Array(p.split("/"))
 		parts.reverse() # Split the path and reverse it so index 0 is always the file name
@@ -321,22 +495,19 @@ func _get_name_at_depth(parts: Array, depth: int) -> String:
 	slice.reverse() # Put it back in normal left-to-right order
 	return "/".join(PackedStringArray(slice))
 
-func reindex_items():
-	for i in range(item_list.item_count):
-		var data = item_list.get_item_metadata(i)
-		var uid = data.get(Keys.UID)
-		collection_data[uid][Keys.IDX] = i
 
+func _get_script_tabs_node():
+	var root = Engine.get_main_loop().root
+	var ed_node = root.get_child(0) as Node
+	return ed_node.get_node_or_null("EditorSingletons/ScriptTabSingleton")
 
-class Keys:
-	const IDX = &"idx"
-	const UID = &"uid"
-	const PATH = &"path"
+class Keys extends CollectionBase.Keys:
+	# for display
 	const PARTS = &"parts"
 	const DISPLAY_NAME = &"display_name"
 	
-	const VALID_FILE = &"valid_file"
-	
-	const DATA = &"collection.keys.data"
-	
 	const DROP_DATA_FROM_IDX = &"from_idx"
+	
+	# persistent
+	const CURRENT_COLLECTION = &"collection.current_collection"
+	const COLLECTION_DATA = &"collection.collection_data"

@@ -1,5 +1,6 @@
 extends FSTree
 
+const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
 const FSTree = UtilsRemote.FSTree
@@ -29,7 +30,8 @@ var _script_data_cache:= {}
 signal create_new_tab(selected_path:String)
 
 func _init() -> void:
-	multi_select = false
+	#multi_select = false # maybe leave multi select on?
+	pass
 
 func _on_fs_ready():
 	filter_line_edit.placeholder_text = "Filter Scripts"
@@ -40,19 +42,18 @@ func _on_fs_ready():
 	_build_tree()
 
 func get_options():
-	
 	var options = Options.new()
-	var flat_icon
-	if _flat_view:
-		flat_icon = "AnimationTrackList"
-	else:
-		flat_icon = "FileTree"
+	var flat_icon = "FileTree" if _flat_view else "AnimationTrackList"
+	options.add_option("Settings/Flat View (%s)" % _flat_view, _set_flat_view.bind(not _flat_view), ["Tools", flat_icon])
 	
-	options.add_option("Flat View (%s)" % _flat_view, _set_flat_view.bind(not _flat_view), [flat_icon])
 	var show_all = file_extensions.is_empty()
-	options.add_option("Show All Files Types (%s)" % show_all, _set_show_all_files.bind(not show_all), ["File"])
-	options.add_option("Show Empty Dirs (%s)" % show_empty_dirs, _set_show_empty_dirs.bind(not show_empty_dirs), ["Folder"])
-	options.add_option("Show Favorites (%s)" % show_favorites, _set_show_favorites.bind(not show_favorites), [FileSystemSingleton.get_favorites_icon()])
+	options.add_option("Settings/Show All Files Types (%s)" % show_all, _set_show_all_files.bind(not show_all), ["File"])
+	options.add_option("Settings/Show Empty Dirs (%s)" % show_empty_dirs, _set_show_empty_dirs.bind(not show_empty_dirs), ["Folder"])
+	if root_dir == "res://":
+		options.add_option("Settings/Show Favorites (%s)" % show_favorites, _set_show_favorites.bind(not show_favorites), [FileSystemSingleton.get_favorites_icon()])
+	
+	options.add_option("Settings/Filter Full Path (%s)" % filter_full_path, _set_filter_full_paths.bind(not filter_full_path), ["RegEx"])
+	options.add_option("Settings/Draw Line Color (%s)" % draw_alternate_line_colors, _set_alt_line_color.bind(not draw_alternate_line_colors), ["TripleBar"])
 	return options
 
 
@@ -74,13 +75,22 @@ func _set_show_all_files(state:bool):
 func _custom_right_click_menu(items:Dictionary, selected_path:String, selected_paths:Array):
 	if immutable:
 		items["pre"].clear()
+	if selected_paths.size() > 1:
+		items["pre"].clear()
+		return
 	
 	if selected_path.ends_with("/"):
+		var copy = items["pre"].duplicate()
+		items["pre"].clear() # place new tab at top, allows clearing above
+		
 		items["pre"][NEW_TAB] = {
 				PopupWrapper.ItemParams.ICON: ["TabContainer"],
 				PopupWrapper.ItemParams.ICON_COLOR: [Color(5,5,5)],
 				PopupWrapper.ItemParams.METADATA: {"selected": selected_path}
 			}
+		for key in copy.keys():
+			items["pre"][key] = copy[key]
+		
 
 func _handle_custom_popup_id(id, popup):
 	var menu_path = PopupWrapper.PopupHelper.parse_menu_path(id, popup)
@@ -91,51 +101,15 @@ func _handle_custom_popup_id(id, popup):
 
 
 func _get_file_data(file_path:String):
-	var data = CacheHelper.get_cached_data(file_path, _script_data_cache)
-	
-	if data == null:
-		data = {}
-	
-	data[ItemKeys.PATH] = file_path
-	data[ItemKeys.ICON_COLOR] = Color.WHITE
-	
-	
-	if file_path.get_extension() == "gd":
-		var is_tool = data.get(&"is_tool", UGDScript.FileRead.get_is_tool(file_path))
-		if is_tool:
-			data[ItemKeys.ICON_COLOR] = EditorColors.get_tool_script_color()
-	
-	#data.
-	if not data.has(ItemKeys.ICON):
-		data[ItemKeys.ICON] = filesystem_singleton.get_type_icon(file_path)
-	if not data.has(ItemKeys.PREVIEW) and not file_path.get_extension() in ScriptListManager.get_text_file_types():
-		var prev = FileSystemSingleton.get_preview(file_path)
-		if prev is Dictionary:
-			data[ItemKeys.PREVIEW] = prev.get(FileData.Preview.PREVIEW)
-	
-	#print(file_path,"::TOOL::", data[ScriptTreeKeys.SCRIPT_IS_TOOL] )
-	CacheHelper.store_data(file_path, data, _script_data_cache, [file_path])
-	return data
+	return UtilsLocal.get_file_data(file_path, _script_data_cache)
 
-func _on_item_activated():
-	_select_or_open_in_script_list()
+
+#func _on_item_activated():
+	#_select_or_open_in_script_list()
 
 func _on_item_left_clicked():
-	return
-	_select_or_open_in_script_list()
-
-func _on_item_right_clicked():
-	var selection = _get_selection()
-	var selected = selection.selected
-	if selected == null:
-		return
-	if selected == FileData.FAVORITES_META:
-		return
-	
-	if Input.is_key_pressed(KEY_CTRL) and selected.get_extension() in ScriptListManager.get_text_file_types():
-		_select_or_open_in_script_list(true)
-	else: # ideally put a open in new script tab into fs menu
-		FileSystemSingleton.show_right_click_menu(self, selected, [selected])
+	return # overide so it deosn't select for import
+	#_select_or_open_in_script_list()
 
 
 func _on_new_tab_pressed(selected_path:String):
@@ -145,7 +119,11 @@ func _on_new_tab_pressed(selected_path:String):
 
 func _select_or_open_in_script_list(right_click:=false):
 	var selected = tree_helper.get_selected_paths().duplicate().pop_front()
-	#print(selected)
+	if not right_click:
+		FileSystemSingleton.activate_path(selected)
+		return
+	
+	# should be dead logic now...no more script menu in this tab
 	if selected != null:
 		if not selected.get_extension() in ScriptListManager.get_text_file_types():
 			FileSystemSingleton.activate_path(selected)
@@ -156,20 +134,3 @@ func _select_or_open_in_script_list(right_click:=false):
 				if right_click:
 					var location = DisplayServer.mouse_get_position()
 					script_list_manager.right_click_by_idx(sl_idx, location)
-
-
-
-
-
-
-
-class ScriptTreeKeys:
-	const SCRIPT_DATA = &"script_data"
-	
-	const SCRIPT_PATH = &"script_path"
-	const SCRIPT_IS_TOOL = &"script_is_tool"
-	const SCRIPT_ICON = &"script_icon"
-	
-	const ROOT_DIR = &"script_tree.root_dir"
-	const FLAT_VIEW = &"script_tree.flat_view"
-	const SHOW_ALL_FILES = &"script_tree.show_all_files"

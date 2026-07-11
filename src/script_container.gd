@@ -2,6 +2,7 @@ extends MarginContainer
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
+const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
 const LineSubmit = UtilsRemote.LineSubmit
 const TabBarContainer = UtilsRemote.TabBarContainer
@@ -37,6 +38,8 @@ enum TabType {
 
 const CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
 
+var setting_helper:SettingHelperEditor
+
 var _dock_data:Dictionary
 var _script_data_cache:Dictionary = {}
 
@@ -50,6 +53,7 @@ var script_tree:ScriptTree
 var base_tabs:= []
 
 var _tab_icon:Texture2D
+var _tab_icon_list:PackedStringArray
 
 var _title_mode:TitleMode = TitleMode.BASE_ICONS
 
@@ -75,6 +79,11 @@ func _ready() -> void:
 		pass
 	_build_nodes()
 	_tab_icon = EditorIcons.get_icon_white("TabBar")
+	
+	setting_helper = SettingHelperEditor.new()
+	var default = PackedStringArray(["Node", "Node2D", "Node3D", "Folder"])
+	setting_helper.subscribe_property(self, &"_tab_icon_list", EditorSet.DEFAULT_TAB_ICONS, default)
+	setting_helper.initialize()
 
 func _build_nodes():
 	if is_instance_valid(_vbox):
@@ -134,7 +143,8 @@ func get_margins():
 func get_options():
 	var options = Options.new()
 	
-	options.add_option("Add Collection", _new_collection, ["ThemeSelectAll"])
+	options.add_option("New/Collection", _new_collection, ["Add", "ThemeSelectAll"])
+	options.add_option("New/Tree", _new_tree.bind("res://"), ["Add", "FileTree"])
 	options.add_enum_radio("Titles", _set_title_mode, TitleMode, _title_mode, [_tab_icon, null])
 	return options
 
@@ -147,10 +157,22 @@ func _on_tab_rmb_clicked(tab:int):
 			options.add_option("Rename", _on_tab_rename.bind(tab), ["Rename"])
 		
 		var icon_base_icon = EditorInterface.get_editor_theme().get_icon(&"Image", &"EditorIcons")
-		for icon_name in ["Node", "Node2D", "Node3D", "Folder"]:
-			options.add_option("Set Icon/" + icon_name, _on_tab_set_icon.bind(tab, icon_name), [icon_base_icon, icon_name])
+		for full_icon_name in _tab_icon_list:
+			var icon_display = full_icon_name
+			var icon_or_name = full_icon_name
+			if icon_or_name.is_absolute_path():
+				icon_display = full_icon_name.get_file()
+				icon_or_name = load(full_icon_name)
+				if not icon_or_name is Texture2D:
+					icon_or_name = EditorInterface.get_editor_theme().get_icon(&"MissingNode", &"EditorIcons")
+			
+			options.add_option("Set Icon/" + icon_display, _on_tab_set_icon.bind(tab, full_icon_name), [icon_base_icon, icon_or_name])
+		
+		if not _tab_icon_list.is_empty():
+			options.add_separator("", "Set Icon")
 		options.add_option("Set Icon/Editor Icon..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
 		options.add_option("Set Icon/Open..", _on_tab_set_custom_icon.bind(tab), [icon_base_icon, "Load"])
+		options.add_option("Set Icon/Reset", _on_tab_set_icon.bind(tab, _tab_get_default_icon(tab_bar_container.get_tab_control(tab))), ["Reload"])
 	
 	if control.has_method(&"get_options"):
 		options.merge(control.get_options())
@@ -186,13 +208,26 @@ func _on_tab_set_custom_icon(tab:int):
 	else:
 		printerr("Could not find icon: ", handled)
 
+func _tab_get_default_icon(tab_control:Control):
+	if tab_control is ScriptCollection:
+		return &"ThemeSelectAll"
+	elif tab_control is ScriptTree:
+		if tab_control.root_dir == "res://":
+			return "FileTree"
+		else:
+			return "Folder"
+	return "Script"
+
 func _on_tab_set_icon(tab:int, icon_name:String):
 	_tab_set_icon(tab, icon_name)
 	update_tabs_data()
 
 func _tab_set_icon(tab:int, icon_name:String):
+	var is_file = icon_name.is_absolute_path()
 	var icon_texture = _get_icon(icon_name)
 	if icon_texture is Texture2D:
+		if is_file:
+			icon_texture = UResource.UTexture.resize_texture(icon_texture, int(16 * EditorInterface.get_editor_scale()))
 		tab_bar_container.get_tab_bar().set_tab_icon(tab, icon_texture)
 		tab_bar_container.set_tab_meta_value(tab, Keys.TAB_ICON, icon_name)
 
@@ -242,7 +277,7 @@ func _new_collection():
 
 
 func _new_tree(root_dir:String):
-	var new_tab = _new_tab(TabType.TREE, {ScriptTree.ScriptTreeKeys.ROOT_DIR: root_dir})
+	var new_tab = _new_tab(TabType.TREE, {ScriptTree.PersistentData.ROOT_DIR: root_dir})
 	_set_title_mode(_title_mode)
 	update_tabs_data()
 	return new_tab
@@ -256,33 +291,32 @@ func _new_tab(tab_type:TabType, tab_data:Dictionary={}):
 			icon = _get_icon(icon_str)
 	
 	if tab_type == TabType.LIST:
-		if icon == null:
-			icon = EditorInterface.get_editor_theme().get_icon(&"Script", &"EditorIcons")
 		tab_control = ScriptList.new()
 	elif tab_type == TabType.TREE:
-		var root_dir = tab_data.get(ScriptTree.ScriptTreeKeys.ROOT_DIR, "res://")
+		var root_dir = tab_data.get(ScriptTree.PersistentData.ROOT_DIR, "res://")
 		tab_control = ScriptTree.new()
 		if root_dir == "res://":
 			tab_control.name = "Tree"
-			if icon == null:
-				icon = EditorInterface.get_editor_theme().get_icon(&"FileTree", &"EditorIcons")
 		else:
 			tab_control.name = root_dir.trim_suffix("/").get_file()
-			if icon == null:
-				icon = EditorInterface.get_editor_theme().get_icon(&"Folder", &"EditorIcons")
 		
-		tab_control._script_data_cache = _script_data_cache
 		tab_control.right_click_handler = right_click_handler
 		tab_control.create_new_tab.connect(_new_tree)
 	
 	elif tab_type == TabType.COLLECTION:
 		tab_control = ScriptCollection.new()
 		tab_control.right_click_handler = right_click_handler
-		if icon == null:
-			icon = EditorInterface.get_editor_theme().get_icon(&"ThemeSelectAll", &"EditorIcons")
+		tab_control.collection_update.connect(_on_collection_update)
+		tab_control.show_in_filesystem.connect(_on_show_in_tree)
+	
+	if &"_script_data_cache" in tab_control:
+		tab_control._script_data_cache = _script_data_cache
 	
 	if tab_control.has_method(&"set_tab_data"):
 		tab_control.set_tab_data(tab_data)
+	
+	if icon == null:
+		icon = EditorInterface.get_editor_theme().get_icon(_tab_get_default_icon(tab_control), &"EditorIcons")
 	
 	tab_control.name = UName.incremental_name_check_in_nodes(tab_control.name, tab_bar_container.get_tab_parent())
 	tab_bar_container.add_tab(tab_control, icon)
@@ -349,6 +383,17 @@ func _get_tab_rect(tab:int):
 	tab_rect.position += tab_pos
 	return tab_rect
 
+func _on_collection_update(col_tab:ScriptCollection):
+	var col_name = col_tab.current_collection.get_collection_name()
+	col_tab.name = UName.incremental_name_check_in_nodes(col_name, tab_bar_container.get_tab_parent())
+	var idx = col_tab.get_index()
+	tab_bar_container.get_tab_bar().set_tab_title(idx, _get_tab_title(idx))
+
+func _on_show_in_tree(path:String):
+	tab_bar_container.set_current_tab(script_tree.get_index())
+	script_tree.tree_helper.select_paths([path])
+	script_tree.tree_helper.show_tree_item(script_tree.tree_helper.get_tree_item(path))
+
 class Keys:
 	const CURRENT_TAB = &"script_container.current_tab"
 	const TAB_TITLE_MODE = &"script_container.tab_title_mode"
@@ -362,3 +407,10 @@ class Keys:
 	
 	
 	const CONTAINER_TABS_PATH = &"user://addons/script_outline/container_tabs.json"
+
+class EditorSet:
+	const DEFAULT_TAB_ICONS = &"plugin/script_outline/tab_icons"
+	
+	const DEFAULT_TAB_ICONS_PROP_INFO = {
+		
+	}
