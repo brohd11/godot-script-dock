@@ -1,6 +1,6 @@
 extends VBoxContainer
 
-const Self = preload("res://addons/script_outline/src/script_list/collection.gd")
+const Self = preload("res://addons/script_outline/src/file_tabs/script_collection.gd")
 
 const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
@@ -21,7 +21,7 @@ const CollectionBase = CollectionManager.CollectionBase
 const Form = CollectionSingleton.Form
 
 const CacheHelper = UtilsRemote.CacheHelper
-const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/simple_components/fs_tree.gd")
+const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/components/fs_tree.gd")
 const ItemKeys = FSTree.ItemKeys
 
 

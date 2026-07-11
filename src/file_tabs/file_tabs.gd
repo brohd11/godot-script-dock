@@ -20,9 +20,9 @@ const SLKeys = ScriptListManager.Keys
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
-const ScriptList = preload("res://addons/script_outline/src/script_list/script_list.gd")
-const ScriptTree = preload("res://addons/script_outline/src/script_list/script_tree.gd")
-const ScriptCollection = preload("res://addons/script_outline/src/script_list/collection.gd")
+const ScriptList = preload("res://addons/script_outline/src/file_tabs/script_list.gd")
+const ScriptTree = preload("res://addons/script_outline/src/file_tabs/script_tree.gd")
+const ScriptCollection = preload("res://addons/script_outline/src/file_tabs/script_collection.gd")
 
 enum TitleMode {
 	TITLES,

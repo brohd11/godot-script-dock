@@ -7,8 +7,8 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 const EditorIcons = UtilsRemote.EditorIcons
 
-const ScriptContainer = preload("res://addons/script_outline/src/script_container.gd")
-const ScriptOutline = preload("res://addons/script_outline/src/outline.gd")
+const FileTabs = preload("res://addons/script_outline/src/file_tabs/file_tabs.gd")
+const ScriptOutline = preload("res://addons/script_outline/src/outline/outline.gd")
 
 enum ViewMode {
 	BOTH,
@@ -16,7 +16,7 @@ enum ViewMode {
 	OUTLINE
 }
 
-var script_container:ScriptContainer
+var script_container:FileTabs
 var script_outline:ScriptOutline
 
 var _current_view_mode:ViewMode = ViewMode.BOTH
@@ -61,7 +61,7 @@ func _init():
 	right_click_handler = RightClickHandler.new()
 	add_child(right_click_handler)
 	
-	script_container = ScriptContainer.new()
+	script_container = FileTabs.new()
 	add_child(script_container)
 	script_container.right_click_handler = right_click_handler
 	

@@ -1,36 +1,34 @@
 #! remote
 
-const EditorGDScriptParser = preload("res://addons/addon_lib/brohd/alib_editor/misc/parser/editor_parser.gd") #! resolve ALibEditor.Singleton.EditorGDScriptParser
+const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
 
-const TreeHelperBase = preload("res://addons/addon_lib/brohd/alib_runtime/tree_helper/tree_helper_base.gd") #! resolve ALibRuntime.TreeHelperBase
+const TreeHelperBase = preload("uid://bm6fl2iu4jew7") #! resolve ALibRuntime.TreeHelperBase
 
-const PluginButton = preload("res://addons/addon_lib/brohd/alib_editor/ui/button/button_helper.gd").PluginButton #! resolve ALibEditor.UIHelpers.Buttons.PluginButton
-const TabBarContainer = preload("res://addons/addon_lib/brohd/alib_editor/ui/tab/tab_bar_container.gd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
+const PluginButton = preload("uid://cwiqk1fttu0sy").PluginButton #! resolve ALibEditor.UIHelpers.Buttons.PluginButton
+const TabBarContainer = preload("uid://b7cxw711vl1jd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
 const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.PathBar
 
 const SettingHelperEditor = preload("uid://c4l4v4eufkmtx") #! resolve ALibEditor.Settings.SettingHelperEditor
 
-const UFile = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_file.gd") #! resolve ALibRuntime.Utils.UFile
-const UName = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_name.gd") #! resolve ALibRuntime.Utils.UName
-const UResource = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_resource.gd") #! resolve ALibRuntime.Utils.UResource
-const UGDScript = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_gdscript.gd") #! resolve ALibRuntime.Utils.UGDScript
+const UFile = preload("uid://gs632l1nhxaf") #! resolve ALibRuntime.Utils.UFile
+const UName = preload("uid://e2t8o184os5r") #! resolve ALibRuntime.Utils.UName
+const UResource = preload("uid://72uu8yngsoht") #! resolve ALibRuntime.Utils.UResource
+const UGDScript = preload("uid://bqwb564jwff43") #! resolve ALibRuntime.Utils.UGDScript
 const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType
-const UString = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_string.gd") #! resolve ALibRuntime.Utils.UString
-const UWindow = preload("res://addons/addon_lib/brohd/alib_runtime/utils/u_window.gd") #! resolve ALibRuntime.Utils.UWindow
-const UClassDetail = preload("res://addons/addon_lib/brohd/alib_editor/utils/src/u_class_detail.gd") #! resolve ALibEditor.Utils.UClassDetail
-const LineSubmit = preload("res://addons/addon_lib/brohd/alib_runtime/dialog/line_submit/line_submit.gd") #! resolve ALibRuntime.Dialog.Handlers.LineSubmit
+const UString = preload("uid://cwootkivqiwq1") #! resolve ALibRuntime.Utils.UString
+const UWindow = preload("uid://q2lbynew21er") #! resolve ALibRuntime.Utils.UWindow
+const UClassDetail = preload("uid://gyx3o6jv751x") #! resolve ALibEditor.Utils.UClassDetail
+const CacheHelper = preload("uid://1t7w412oon1j") #! resolve ALibRuntime.Utils.UMisc.CacheHelper
+const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.UProfile.TimeBudget
 
-const EditorColors = preload("res://addons/addon_lib/brohd/alib_editor/misc/colors/editor_colors.gd") #! resolve ALibEditor.Colors
-const EditorIcons = preload("res://addons/addon_lib/brohd/alib_editor/misc/icons/editor_icons.gd") #! resolve ALibEditor.Singleton.EditorIcons
-const ScriptListManager = preload("res://addons/addon_lib/brohd/alib_editor/misc/script_list/script_list_manager.gd") #! resolve ALibEditor.Singleton.ScriptListManager
+const LineSubmit = preload("uid://dmilkaqawd510") #! resolve ALibRuntime.Dialog.Handlers.LineSubmit
+
+const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
+const EditorIcons = preload("uid://viocyrti6wce") #! resolve ALibEditor.Singleton.EditorIcons
+const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
 
-const RightClickHandler = preload("res://addons/addon_lib/brohd/gui_click_handler/right_click_handler.gd") #! resolve ClickHandlers.RightClickHandler
-const Options = preload("res://addons/addon_lib/brohd/alib_runtime/popup_menu/popup_options.gd") #! resolve ALibRuntime.Popups.Options
+const RightClickHandler = preload("uid://mmtkf4h8er3m") #! resolve ClickHandlers.RightClickHandler
+const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
-const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/simple_components/fs_tree.gd")
-
-const CacheHelper = preload("res://addons/addon_lib/brohd/alib_runtime/cache_helper/cache_helper.gd")
-
-
-const TEXT_FILE_TYPES = ["gd", "json", "cfg", "txt", "ini", "md"]
+const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve ALibEditor.FileSystem.Component.FSTree

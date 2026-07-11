@@ -769,8 +769,6 @@ class OutlineTree extends Tree:
 			_clear_infer_queue()
 			return
 		
-		var count:int = 0
-		
 		# pseudo setting
 		var show_suffixes = false
 		#
@@ -788,10 +786,10 @@ class OutlineTree extends Tree:
 		var code_edit = gdscript_parser.get_code_edit_parser().code_edit
 		var line_count = code_edit.get_line_count()
 		
-		var inc_t = GDScriptParser.TF.new("Infer Queue", GDScriptParser.TF.TimeScale.USEC, false)
-		inc_t.iterations = 50
-		inc_t.start()
+		var budget = ALibRuntime.Utils.UProfile.TimeBudget.new()
 		while not _infer_queue.is_empty():
+			budget.start_cycle()
+			
 			var item_data:Dictionary = _infer_queue.pop_front()
 			var item:TreeItem = item_data.get(OutlineKeys.ITEM)
 			if not is_instance_valid(item):
@@ -919,9 +917,7 @@ class OutlineTree extends Tree:
 			_set_item_persistent_data(access_path, params)
 			_set_item_params_from_persistent_data(item, access_path)
 			
-			#inc_t.stop("", true)
-			count += 1
-			if count % QUEUE_PER_FRAME == 0: # every x amount, await a frame
+			if budget.end_cycle():
 				await get_tree().process_frame
 		
 		
@@ -930,8 +926,9 @@ class OutlineTree extends Tree:
 			if not _item_dict.has(access_path):
 				current_script_item_data.erase(access_path)
 		
-		#print("ITEMS INFERRED::", count)
-		#t.stop()
+		if PRINT_DEBUG:
+			print("Working Time: ",budget.get_working_time())
+			print("Total Time: ", budget.get_total_time())
 		
 		if _infer_queue_processing: # rebuilding the tree sets this to false, so that not rebuilding with an unfinished queue
 			infer_queue_finished.emit()
