@@ -9,9 +9,14 @@ extends VBoxContainer
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 const UControl = UtilsRemote.UControl
 const TabBarContainer = UtilsRemote.TabBarContainer
+
+const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
+
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 const GitChangeList = preload("res://addons/script_outline/src/git/git_change_list.gd")
 const GitCommitList = preload("res://addons/script_outline/src/git/git_commit_list.gd")
+const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
+
 
 const MAIN_REPO = "res://"
 const MAIN_REPO_TITLE = "Project"
@@ -74,14 +79,25 @@ func _ready() -> void:
 	change_list = GitChangeList.new()
 	change_list.name = "Changes"
 	tab_container.add_tab(change_list)
+	UtilsLocal.set_item_list_sb(change_list)
 
 	commit_list = GitCommitList.new()
 	commit_list.name = "Commits"
 	tab_container.add_tab(commit_list)
-
+	UtilsLocal.set_item_list_sb(commit_list)
+	#commit_list.segment({})
 	status_updated.connect(_on_status_updated)
 	commits_updated.connect(_on_commits_updated)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed, 1)
+
+	# The status letters are baked textures, and a row picks its texture up at the moment it is built.
+	# The bake is a frame's work and is kicked off at plugin start, so it is all but certain to be
+	# done before the first `git status` returns — but if it is not, or if it is redone because the
+	# editor's font changed, the rows that missed it are still drawing the letter as a string. Rebuild
+	# them and they take the texture.
+	var glyph_icons = GlyphIcons.get_singleton()
+	if is_instance_valid(glyph_icons):
+		glyph_icons.generated.connect(_rebuild_change_list)
 
 	refresh_repos()
 	

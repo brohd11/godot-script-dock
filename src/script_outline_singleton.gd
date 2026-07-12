@@ -7,6 +7,8 @@ const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 
 const SideBarContainer = preload("res://addons/script_outline/src/sidebar_container.gd")
 const VarInsertContext = preload("res://addons/script_outline/src/editor_plugins/var_insert.gd")
+const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
+const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 
 
 #region SingletonAPI
@@ -50,6 +52,7 @@ var sidebar_container:SideBarContainer
 var dm_instance_manager:DockManager.InstanceManager
 
 var var_insert_context:VarInsertContext
+var glyph_icons:GlyphIcons
 
 func _get_plugin_name() -> String:
 	return "Script Outline"
@@ -61,7 +64,15 @@ func _ready() -> void:
 	FileSystemSingleton.register_node(initial_plugin)
 	EditorGDScriptParser.register_node(initial_plugin)
 	#ScriptEditorRef.subscribe()
-	
+
+	# Baking the status letters costs one rendered frame, so it starts here — the earliest point there
+	# is a tree to render in, and a long way ahead of the first `git status`, which is a process spawn
+	# on a worker thread. Nothing blocks on it: a row built before the bake lands draws its letter as
+	# a string and is rebuilt when GlyphIcons reports in.
+	glyph_icons = GlyphIcons.new()
+	add_child(glyph_icons)
+	glyph_icons.warm(GitUtil.get_letter_set())
+
 	var_insert_context = VarInsertContext.new()
 	initial_plugin.add_context_menu_plugin(EditorContextMenuPlugin.CONTEXT_SLOT_SCRIPT_EDITOR_CODE, var_insert_context)
 	

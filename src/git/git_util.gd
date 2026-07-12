@@ -11,6 +11,14 @@ const MAX_DEPTH = 5
 
 const LOG_LIMIT = 100
 
+## The fields of one `git log` record. `%D` is the ref names, which is where the tags come from; it
+## goes last because it is the one field that is empty for most commits, and a trailing empty field
+## still splits to the right size.
+const LOG_FIELDS:PackedStringArray = ["%h", "%s", "%an", "%ar", "%H", "%D"]
+
+## How git marks a tag inside `%D`, as opposed to a branch or HEAD.
+const TAG_PREFIX = "tag: "
+
 ## ASCII unit separator, the field delimiter in the log format below. Safe where NUL was not: it is
 ## a valid single byte UTF-8 character, so it survives the Godot String that OS.execute pipes the
 ## process output through.
@@ -64,21 +72,51 @@ const STATUS_LABELS = {
 	Status.UNMERGED: "Conflict",
 }
 
+## git's own short-format letters, for when a row is too narrow to spell the word out. "?" for
+## untracked and "U" for a conflict are what `git status -s` prints; the two never collide, and the
+## row colour tells them apart anyway (untracked light green, conflict red).
+const STATUS_LETTERS = {
+	Status.MODIFIED: "M",
+	Status.ADDED: "A",
+	Status.DELETED: "D",
+	Status.RENAMED: "R",
+	Status.COPIED: "C",
+	Status.TYPE_CHANGED: "T",
+	Status.UNMERGED: "U",
+}
+
 
 ## The action a row should display, from an entry of the FILES dict.
 ##
 ## A display concern, so it is derived here rather than stored on the entry. The worktree side wins
 ## when the file is dirty on disk, so a staged-then-edited file reports what is still uncommitted.
 static func get_status_label(file_data:Dictionary) -> String:
+	return _status_display(file_data, STATUS_LABELS, "Untracked", "Conflict", "Unknown")
+
+
+## The same, abbreviated to git's own single letter — what a row falls back to when the sidebar is
+## too narrow to spell the word out.
+static func get_status_letter(file_data:Dictionary) -> String:
+	return _status_display(file_data, STATUS_LETTERS, "?", "U", "")
+
+
+## Every character get_status_letter() can return. What a glyph cache has to bake to be able to
+## answer for any file, whatever its status turns out to be.
+static func get_letter_set() -> String:
+	# "?" is the untracked row's letter and is not in the table, which is keyed by Status
+	return "".join(STATUS_LETTERS.values()) + "?"
+
+
+static func _status_display(file_data:Dictionary, table:Dictionary, untracked:String, conflict:String, unknown:String) -> String:
 	match file_data.get(Keys.KIND, Kind.ORDINARY):
 		Kind.UNTRACKED:
-			return "Untracked"
+			return untracked
 		Kind.UNMERGED:
-			return "Conflict"
+			return conflict
 
 	var worktree:Status = file_data.get(Keys.WORKTREE, Status.NONE)
 	var index:Status = file_data.get(Keys.INDEX, Status.NONE)
-	return STATUS_LABELS.get(worktree if worktree != Status.NONE else index, "Unknown")
+	return table.get(worktree if worktree != Status.NONE else index, unknown)
 
 
 static func run_git(repo_dir:String, args:Array) -> Dictionary:
@@ -218,26 +256,29 @@ static func _merge_patch(repo_dir:String, files:Dictionary, extra_args:Array, hu
 ## never contain a newline and one output line is exactly one commit. `%ar` is git's own relative
 ## date ("2 days ago"), so there is no date maths here.
 static func get_log(repo_dir:String, limit:=LOG_LIMIT) -> Array[Dictionary]:
-	var commits:Array[Dictionary] = []
-
-	var fields = ["%h", "%s", "%an", "%ar", "%H"]
 	var result = run_git(repo_dir, [
 		"log",
 		"--max-count=%s" % limit,
-		"--pretty=format:" + LOG_SEP.join(fields),
+		"--pretty=format:" + LOG_SEP.join(LOG_FIELDS),
 	])
-	# a repo with no commits yet exits non zero — that is not an error, it just has no history
-	if result[Keys.EXIT] != 0:
-		return commits
 
 	var output:Array = result[Keys.OUTPUT]
-	if output.is_empty():
-		return commits
+	# a repo with no commits yet exits non zero — that is not an error, it just has no history
+	if result[Keys.EXIT] != 0 or output.is_empty():
+		return [] as Array[Dictionary]
 
-	for raw_line in String(output[0]).split("\n", false):
+	return parse_log(String(output[0]))
+
+
+## The parse half of get_log, split out so it can be exercised against captured git output without
+## spawning anything. See tests/git/.
+static func parse_log(text:String) -> Array[Dictionary]:
+	var commits:Array[Dictionary] = []
+
+	for raw_line in text.split("\n", false):
 		var line = raw_line.trim_suffix("\r")
 		var parts = line.split(LOG_SEP)
-		if parts.size() < fields.size():
+		if parts.size() < LOG_FIELDS.size():
 			continue
 
 		commits.append({
@@ -246,9 +287,23 @@ static func get_log(repo_dir:String, limit:=LOG_LIMIT) -> Array[Dictionary]:
 			Keys.AUTHOR: parts[2],
 			Keys.DATE: parts[3],
 			Keys.FULL_HASH: parts[4],
+			Keys.TAGS: _parse_refs(parts[5]),
 		})
 
 	return commits
+
+
+## The tags out of a `%D` ref field: "HEAD -> main, origin/main, tag: v0.7.2, tag: v0.7.3".
+##
+## Branch and HEAD refs share the field with the tags, so the "tag: " prefix is the only thing that
+## tells them apart — without this filter the Commits list would label every tip commit "main".
+static func _parse_refs(field:String) -> Array[String]:
+	var tags:Array[String] = []
+	for ref in field.split(",", false):
+		var name = ref.strip_edges()
+		if name.begins_with(TAG_PREFIX):
+			tags.append(name.substr(TAG_PREFIX.length()))
+	return tags
 
 
 static func _new_branch() -> Dictionary:
@@ -616,6 +671,7 @@ class Keys:
 	const SUBJECT = &"subject"
 	const AUTHOR = &"author"
 	const DATE = &"date"
+	const TAGS = &"tags"
 
 
 class Colors:
