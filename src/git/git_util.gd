@@ -1,4 +1,4 @@
-## Git repo discovery and status.
+## Git repo discovery, status and diffs.
 ##
 ## Deliberately standalone — static, no node references, no panel coupling — so it can be
 ## lifted into a_lib whole once it settles.
@@ -20,29 +20,65 @@ const LOG_SEP = "\u001f"
 ## project files; the rest is build noise.
 const PRUNE_DIRS:PackedStringArray = [".git", ".godot", ".import", "node_modules"]
 
-## The XY pairs git uses for an unmerged (conflicted) path.
-const CONFLICT_CODES:PackedStringArray = ["DD", "AU", "UD", "UA", "DU", "AA", "UU"]
+## The v2 line type, which is what tells a conflict from an untracked file from an ordinary edit.
+## v1 forced that distinction out of the XY pair; v2 states it outright.
+enum Kind {
+	ORDINARY,  ## "1"
+	RENAMED,   ## "2", a rename or a copy
+	UNMERGED,  ## "u"
+	UNTRACKED, ## "?"
+	IGNORED,   ## "!"
+}
 
-## Not real index/worktree states — they only ever appear as the "??" / "!!" pair.
-const NON_STATES:PackedStringArray = [" ", "?", "!"]
+## One side of the XY pair. v2 writes an unmodified side as ".", which maps to NONE here — the
+## raw character never escapes the parser.
+enum Status {
+	NONE,
+	MODIFIED,
+	ADDED,
+	DELETED,
+	RENAMED,
+	COPIED,
+	TYPE_CHANGED,
+	UNMERGED,
+}
+
+const CHAR_STATUS = {
+	".": Status.NONE,
+	"M": Status.MODIFIED,
+	"A": Status.ADDED,
+	"D": Status.DELETED,
+	"R": Status.RENAMED,
+	"C": Status.COPIED,
+	"T": Status.TYPE_CHANGED,
+	"U": Status.UNMERGED,
+}
 
 const STATUS_LABELS = {
-	"M": "Modified",
-	"A": "Added",
-	"D": "Deleted",
-	"R": "Renamed",
-	"C": "Copied",
-	"T": "Type Change",
-	"U": "Conflict",
-	"?": "Untracked",
+	Status.MODIFIED: "Modified",
+	Status.ADDED: "Added",
+	Status.DELETED: "Deleted",
+	Status.RENAMED: "Renamed",
+	Status.COPIED: "Copied",
+	Status.TYPE_CHANGED: "Type Change",
+	Status.UNMERGED: "Conflict",
 }
 
 
 ## The action a row should display, from an entry of the FILES dict.
-## Reads the `letter` the parse already resolved: the worktree state when the file is dirty on
-## disk, otherwise the index state — so a staged-then-edited file reports what is still uncommitted.
+##
+## A display concern, so it is derived here rather than stored on the entry. The worktree side wins
+## when the file is dirty on disk, so a staged-then-edited file reports what is still uncommitted.
 static func get_status_label(file_data:Dictionary) -> String:
-	return STATUS_LABELS.get(file_data.get(Keys.LETTER, ""), "Unknown")
+	match file_data.get(Keys.KIND, Kind.ORDINARY):
+		Kind.UNTRACKED:
+			return "Untracked"
+		Kind.UNMERGED:
+			return "Conflict"
+
+	var worktree:Status = file_data.get(Keys.WORKTREE, Status.NONE)
+	var index:Status = file_data.get(Keys.INDEX, Status.NONE)
+	return STATUS_LABELS.get(worktree if worktree != Status.NONE else index, "Unknown")
 
 
 static func run_git(repo_dir:String, args:Array) -> Dictionary:
@@ -95,38 +131,85 @@ static func find_repos(root:="res://", max_depth:=MAX_DEPTH) -> Array[String]:
 
 ## Blocking. Callers that care about the editor's frame rate should run this off the main thread.
 ##
-## Porcelain v1 is the same format VSCode's git extension parses, so the derived flags line up
-## with its Changes / Staged Changes / Merge Changes grouping and its M/A/D/R/C/U decorations.
+## Porcelain v2, not v1: the branch state arrives as four `# branch.*` header lines instead of one
+## line of bracket-and-ellipsis punctuation to unpick, a rename tab-separates its two paths instead
+## of joining them with an ambiguous " -> ", and a conflict is its own line type rather than a pair
+## of letters to look up in a table.
+##
 ## Not `-z`: NUL delimited output would be more robust for pathological paths, but OS.execute
 ## funnels the pipe through a Godot String, where embedded NULs cannot be relied on. Newline
 ## delimited plus core.quotepath=false is the safe trade — git C-quotes the awkward paths and
 ## _unquote_path puts them back.
 static func get_status(repo_dir:String) -> Dictionary:
+	var result = run_git(repo_dir, [
+		"-c", "core.quotepath=false",
+		"status", "--porcelain=v2", "--branch", "--untracked-files=all",
+	])
+
+	var output:Array = result[Keys.OUTPUT]
+	if result[Keys.EXIT] != 0 or output.is_empty():
+		return parse_status("", repo_dir)
+
+	return parse_status(String(output[0]), repo_dir)
+
+
+## The parse half of get_status, split out so it can be exercised against captured git output
+## without spawning anything. See tests/git/.
+static func parse_status(text:String, repo_dir:String) -> Dictionary:
 	var status = {
 		Keys.REPO: repo_dir,
-		Keys.BRANCH: {},
+		Keys.BRANCH: _new_branch(),
 		Keys.FILES: {},
 	}
 
-	var result = run_git(repo_dir, [
-		"-c", "core.quotepath=false",
-		"status", "--porcelain=v1", "--branch", "--untracked-files=all",
-	])
+	for raw_line in text.split("\n", false):
+		var line = raw_line.trim_suffix("\r")
+		if line.begins_with("# branch."):
+			_parse_branch_header(line, status[Keys.BRANCH])
+		elif not line.begins_with("#"): # ignore headers we don't recognise, as git asks
+			_parse_entry(line, repo_dir, status[Keys.FILES])
+
+	return status
+
+
+## Blocking, like get_status — run it off the main thread.
+##
+## Two spawns for the whole worktree, not one per file: `git diff` with no pathspec already emits
+## the patch for every changed file, and splitting it up would only multiply git's ~11ms startup.
+## Merges into an existing get_status() result so the panel's thread keeps its shape.
+##
+## Untracked files get no hunks: `git diff` excludes them by design. Their content is on disk and
+## can just be read. (`git add -N` would pull them into the diff, but it writes to the index, which
+## a passive auto-refreshing panel has no business doing.)
+static func attach_diffs(repo_dir:String, status:Dictionary) -> void:
+	var files:Dictionary = status.get(Keys.FILES, {})
+	if files.is_empty():
+		return
+
+	_merge_patch(repo_dir, files, [], Keys.HUNKS_UNSTAGED)      # worktree vs index
+	_merge_patch(repo_dir, files, ["--cached"], Keys.HUNKS_STAGED) # index vs HEAD
+
+
+static func _merge_patch(repo_dir:String, files:Dictionary, extra_args:Array, hunks_key:StringName) -> void:
+	var args = ["-c", "core.quotepath=false", "diff", "--patch"]
+	args.append_array(extra_args)
+
+	var result = run_git(repo_dir, args)
 	if result[Keys.EXIT] != 0:
-		return status
+		return
 
 	var output:Array = result[Keys.OUTPUT]
 	if output.is_empty():
-		return status
+		return
 
-	for raw_line in String(output[0]).split("\n", false):
-		var line = raw_line.trim_suffix("\r")
-		if line.begins_with("## "):
-			status[Keys.BRANCH] = _parse_branch(line.substr(3))
-		elif line.length() > 3:
-			_parse_file(line, repo_dir, status[Keys.FILES])
-
-	return status
+	var patch = parse_patch(String(output[0]), repo_dir)
+	for res_path:String in patch:
+		if not files.has(res_path):
+			continue # a path in the diff but not in the status: nothing to hang it off
+		var parsed:Dictionary = patch[res_path]
+		files[res_path][hunks_key] = parsed[Keys.HUNKS]
+		if parsed[Keys.BINARY]:
+			files[res_path][Keys.BINARY] = true
 
 
 ## Blocking, like get_status — run it off the main thread.
@@ -168,74 +251,277 @@ static func get_log(repo_dir:String, limit:=LOG_LIMIT) -> Array[Dictionary]:
 	return commits
 
 
-static func _parse_branch(info:String) -> Dictionary:
-	var branch = {
+static func _new_branch() -> Dictionary:
+	return {
 		Keys.BRANCH_NAME: "",
 		Keys.BRANCH_UPSTREAM: "",
 		Keys.BRANCH_AHEAD: 0,
 		Keys.BRANCH_BEHIND: 0,
 		Keys.BRANCH_DETACHED: false,
+		Keys.BRANCH_INITIAL: false,
 	}
 
-	if info.begins_with("HEAD (no branch)"):
-		branch[Keys.BRANCH_DETACHED] = true
-		return branch
 
-	# a fresh repo reports "No commits yet on main" — the branch is real, it just has no HEAD
-	info = info.trim_prefix("No commits yet on ")
+## One of the four `# branch.*` headers --branch emits. Each states its field outright, so there is
+## no punctuation to unpick here the way v1's single "## main...origin/main [ahead 1]" line needed.
+static func _parse_branch_header(line:String, branch:Dictionary) -> void:
+	var parts = line.split(" ", true, 2)
+	if parts.size() < 3:
+		return
 
-	# "[ahead 1, behind 2]" trails the branch, and only when an upstream is configured
-	var bracket = info.find(" [")
-	if bracket > -1:
-		var tracking = info.substr(bracket + 2).trim_suffix("]")
-		for part in tracking.split(",", false):
-			part = part.strip_edges()
-			if part.begins_with("ahead "):
-				branch[Keys.BRANCH_AHEAD] = part.trim_prefix("ahead ").to_int()
-			elif part.begins_with("behind "):
-				branch[Keys.BRANCH_BEHIND] = part.trim_prefix("behind ").to_int()
-		info = info.substr(0, bracket)
+	match parts[1]:
+		"branch.oid":
+			branch[Keys.BRANCH_INITIAL] = parts[2] == "(initial)"
+		"branch.head":
+			if parts[2] == "(detached)":
+				branch[Keys.BRANCH_DETACHED] = true
+			else:
+				branch[Keys.BRANCH_NAME] = parts[2]
+		"branch.upstream":
+			branch[Keys.BRANCH_UPSTREAM] = parts[2]
+		"branch.ab":
+			# "+<ahead> -<behind>"
+			for field in parts[2].split(" ", false):
+				if field.begins_with("+"):
+					branch[Keys.BRANCH_AHEAD] = field.substr(1).to_int()
+				elif field.begins_with("-"):
+					branch[Keys.BRANCH_BEHIND] = field.substr(1).to_int()
 
-	var parts = info.split("...", true, 1)
-	branch[Keys.BRANCH_NAME] = parts[0]
-	if parts.size() > 1:
-		branch[Keys.BRANCH_UPSTREAM] = parts[1]
 
-	return branch
+## A single tracked / untracked / ignored entry. The leading token is the line type.
+##
+## Every split below is bounded by an explicit maxsplit: a path may contain spaces, so it has to be
+## taken as the whole remainder of the line rather than as one space-delimited field.
+static func _parse_entry(line:String, repo_dir:String, files:Dictionary) -> void:
+	match line.substr(0, 2):
+		"1 ":
+			# 1 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <path>
+			var parts = line.split(" ", true, 8)
+			if parts.size() < 9:
+				return
+			var entry = _new_entry(Kind.ORDINARY, parts[1])
+			entry[Keys.SUB] = parts[2]
+			entry[Keys.OID_HEAD] = parts[6]
+			entry[Keys.OID_INDEX] = parts[7]
+			files[_to_res_path(repo_dir, parts[8])] = entry
+
+		"2 ":
+			# 2 <XY> <sub> <mH> <mI> <mW> <hH> <hI> <X><score> <path><TAB><origPath>
+			var parts = line.split(" ", true, 9)
+			if parts.size() < 10:
+				return
+			var paths = parts[9].split("\t")
+			if paths.size() < 2:
+				return
+			var entry = _new_entry(Kind.RENAMED, parts[1])
+			entry[Keys.SUB] = parts[2]
+			entry[Keys.OID_HEAD] = parts[6]
+			entry[Keys.OID_INDEX] = parts[7]
+			entry[Keys.SCORE] = parts[8].substr(1).to_int() # drop the leading R / C
+			entry[Keys.RENAMED_FROM] = _to_res_path(repo_dir, paths[1])
+			files[_to_res_path(repo_dir, paths[0])] = entry
+
+		"u ":
+			# u <XY> <sub> <m1> <m2> <m3> <mW> <h1> <h2> <h3> <path>
+			var parts = line.split(" ", true, 10)
+			if parts.size() < 11:
+				return
+			var entry = _new_entry(Kind.UNMERGED, parts[1])
+			entry[Keys.SUB] = parts[2]
+			files[_to_res_path(repo_dir, parts[10])] = entry
+
+		"? ":
+			files[_to_res_path(repo_dir, line.substr(2))] = _new_entry(Kind.UNTRACKED, "..")
+
+		"! ":
+			files[_to_res_path(repo_dir, line.substr(2))] = _new_entry(Kind.IGNORED, "..")
 
 
-static func _parse_file(line:String, repo_dir:String, files:Dictionary) -> void:
-	# fixed width: X at 0, Y at 1, space at 2, path from 3
-	var x = line[0]
-	var y = line[1]
-	var path_field = line.substr(3)
+static func _new_entry(kind:Kind, xy:String) -> Dictionary:
+	var index:Status = CHAR_STATUS.get(xy.substr(0, 1), Status.NONE)
+	var worktree:Status = CHAR_STATUS.get(xy.substr(1, 1), Status.NONE)
 
-	var renamed_from = ""
-	var arrow = path_field.find(" -> ")
-	if arrow > -1 and (x == "R" or x == "C"):
-		# a rename or copy reports both sides, "old -> new"
-		renamed_from = _to_res_path(repo_dir, path_field.substr(0, arrow))
-		path_field = path_field.substr(arrow + 4)
-
-	var xy = x + y
-	var conflicted = xy in CONFLICT_CODES
-	var untracked = xy == "??"
-	var tracked_change = not conflicted and not untracked
-
-	var staged = tracked_change and not x in NON_STATES
-	var unstaged = tracked_change and not y in NON_STATES
-
-	files[_to_res_path(repo_dir, path_field)] = {
-		Keys.X: x,
-		Keys.Y: y,
-		Keys.STAGED: staged,
-		Keys.UNSTAGED: unstaged,
-		Keys.UNTRACKED: untracked,
-		Keys.CONFLICTED: conflicted,
-		Keys.RENAMED_FROM: renamed_from,
-		# what a decoration shows: the worktree letter wins when the file is dirty on disk
-		Keys.LETTER: y if unstaged else x,
+	return {
+		Keys.KIND: kind,
+		Keys.INDEX: index,
+		Keys.WORKTREE: worktree,
+		Keys.STAGED: index != Status.NONE,
+		Keys.UNSTAGED: worktree != Status.NONE,
+		Keys.RENAMED_FROM: "",
+		Keys.SCORE: 0,
+		Keys.SUB: "",
+		Keys.OID_HEAD: "",
+		Keys.OID_INDEX: "",
+		Keys.BINARY: false,
+		Keys.HUNKS_STAGED: [],
+		Keys.HUNKS_UNSTAGED: [],
 	}
+
+
+## A unified diff, split into per-file hunks and keyed by res:// path so it merges straight into the
+## FILES dict from get_status. Pure, like parse_status — see tests/git/.
+static func parse_patch(text:String, repo_dir:String) -> Dictionary:
+	var out = {}
+
+	var res_path = ""
+	var header = "" # the "a/x b/x" tail of the current `diff --git` line, kept for the binary case
+	var file_data = {}
+	var hunk = {}
+
+	# `allow_empty` stays on: an empty context line in a hunk is " ", but a removed empty line is a
+	# bare "-", and dropping empties would silently shift the line counts.
+	for raw_line in text.split("\n"):
+		var line = raw_line.trim_suffix("\r")
+
+		if line.begins_with("diff --git "):
+			res_path = ""
+			header = line.substr(11)
+			file_data = {Keys.HUNKS: [], Keys.BINARY: false}
+			hunk = {}
+			continue
+
+		if file_data.is_empty():
+			continue
+
+		# The two path headers. `+++` names the file, except for a deletion, where it is /dev/null
+		# and `---` is the only place the path survives.
+		if line.begins_with("+++ ") and line != "+++ /dev/null":
+			res_path = _patch_path(repo_dir, line.substr(4), "b/")
+			out[res_path] = file_data
+			continue
+		if line.begins_with("--- ") and line != "--- /dev/null" and res_path.is_empty():
+			res_path = _patch_path(repo_dir, line.substr(4), "a/")
+			out[res_path] = file_data
+			continue
+
+		if line.begins_with("Binary files ") or line.begins_with("GIT binary patch"):
+			file_data[Keys.BINARY] = true
+			# a binary file has no +++/--- headers at all, so this is the only chance to learn its
+			# path, and the `diff --git` line is the only place left to read it from
+			if res_path.is_empty():
+				res_path = _header_path(repo_dir, header)
+				if not res_path.is_empty():
+					out[res_path] = file_data
+			continue
+
+		if line.begins_with("@@"):
+			hunk = _parse_hunk_header(line)
+			file_data[Keys.HUNKS].append(hunk)
+			continue
+
+		if hunk.is_empty():
+			continue # still in the file header (index / mode / rename lines)
+
+		# Inside a hunk the first character is the origin. "\" is git's "\ No newline at end of
+		# file" marker, which annotates the previous line rather than being one of its own.
+		var origin = line.substr(0, 1)
+		match origin:
+			" ", "+", "-":
+				hunk[Keys.LINES].append({
+					Keys.ORIGIN: origin,
+					Keys.TEXT: line.substr(1),
+				})
+			"":
+				# a context line that is empty; git writes " " but be forgiving
+				hunk[Keys.LINES].append({Keys.ORIGIN: " ", Keys.TEXT: ""})
+			"\\":
+				hunk[Keys.NO_NEWLINE] = true
+
+	return out
+
+
+## "@@ -<old_start>,<old_count> +<new_start>,<new_count> @@ <heading>"
+##
+## A count is omitted when it is 1, and the trailing heading is the enclosing function git guessed
+## at — it is not diff content and must not be read as a line.
+static func _parse_hunk_header(line:String) -> Dictionary:
+	var hunk = {
+		Keys.OLD_START: 0,
+		Keys.OLD_COUNT: 0,
+		Keys.NEW_START: 0,
+		Keys.NEW_COUNT: 0,
+		Keys.HEADING: "",
+		Keys.NO_NEWLINE: false,
+		Keys.LINES: [],
+	}
+
+	var close = line.find("@@", 2)
+	if close < 0:
+		return hunk
+
+	hunk[Keys.HEADING] = line.substr(close + 2).strip_edges()
+
+	for field in line.substr(2, close - 2).strip_edges().split(" ", false):
+		var side = field.substr(0, 1)
+		if side != "-" and side != "+":
+			continue
+
+		var nums = field.substr(1).split(",")
+		var start = nums[0].to_int()
+		var count = nums[1].to_int() if nums.size() > 1 else 1
+
+		if side == "-":
+			hunk[Keys.OLD_START] = start
+			hunk[Keys.OLD_COUNT] = count
+		else:
+			hunk[Keys.NEW_START] = start
+			hunk[Keys.NEW_COUNT] = count
+
+	return hunk
+
+
+## The path out of a `--- a/x` / `+++ b/x` diff header, which is quoted differently to a porcelain
+## path and so cannot go through _to_res_path.
+##
+## Two traps, both of them silent — a mis-read path simply fails to match a status key and the
+## file's hunks vanish:
+##   - git terminates the field with a TAB when the path contains a space ("--- a/with space.txt\t")
+##   - git C-quotes the *whole* field, `a/` prefix included ('--- "a/quo\"te.txt"'), so the tab must
+##     come off and the quoting must come out before the prefix can be stripped
+## Unquoting exactly once also matters: a filename that legitimately begins with a quote would be
+## mangled by a second pass.
+static func _patch_path(repo_dir:String, field:String, prefix:String) -> String:
+	return repo_dir.path_join(_unquote_path(field.trim_suffix("\t")).trim_prefix(prefix))
+
+
+## The path out of a `diff --git a/x b/x` line. A last resort, reached only for a binary file, which
+## git gives no +++/--- headers to read.
+##
+## Ambiguous by construction: the two paths are space-joined and unquoted, so `a/one two.txt
+## b/one two.txt` cannot be split by hunting for the space — which is precisely why git emits a +++
+## header for everything else. It is recoverable at all only because the two halves are identical
+## for anything but a rename, so the split can be found by length and then *checked*. Returns ""
+## when that check fails: no hunks is a great deal better than a file's hunks silently attached to
+## the wrong path.
+static func _header_path(repo_dir:String, header:String) -> String:
+	if header.begins_with("\""):
+		var close = _find_closing_quote(header)
+		if close < 0:
+			return ""
+		return repo_dir.path_join(_unquote_path(header.substr(0, close + 1)).trim_prefix("a/"))
+
+	# "a/" + path + " " + "b/" + path, so the length is 2 * path + 5
+	if header.length() < 7 or (header.length() - 5) % 2 != 0:
+		return ""
+
+	# exact, not truncating: the odd-length case already returned above
+	@warning_ignore("integer_division")
+	var path = header.substr(2, (header.length() - 5) / 2)
+	if header != "a/%s b/%s" % [path, path]:
+		return "" # a rename, or something else we cannot read back confidently
+	return repo_dir.path_join(path)
+
+
+## The index of the closing quote of a C-quoted field, honouring backslash escapes so an escaped
+## quote inside the name does not end it early.
+static func _find_closing_quote(text:String) -> int:
+	var i = 1
+	while i < text.length():
+		match text[i]:
+			"\\": i += 2
+			"\"": return i
+			_: i += 1
+	return -1
 
 
 static func _to_res_path(repo_dir:String, rel_path:String) -> String:
@@ -297,15 +583,33 @@ class Keys:
 	const BRANCH_AHEAD = &"ahead"
 	const BRANCH_BEHIND = &"behind"
 	const BRANCH_DETACHED = &"detached"
+	const BRANCH_INITIAL = &"initial"
 
-	const X = &"x"
-	const Y = &"y"
+	const KIND = &"kind"
+	const INDEX = &"index"
+	const WORKTREE = &"worktree"
 	const STAGED = &"staged"
 	const UNSTAGED = &"unstaged"
-	const UNTRACKED = &"untracked"
-	const CONFLICTED = &"conflicted"
 	const RENAMED_FROM = &"renamed_from"
-	const LETTER = &"letter"
+	const SCORE = &"score"
+	const SUB = &"sub"
+	const OID_HEAD = &"oid_head"
+	const OID_INDEX = &"oid_index"
+
+	const BINARY = &"binary"
+	const HUNKS = &"hunks"
+	const HUNKS_STAGED = &"hunks_staged"
+	const HUNKS_UNSTAGED = &"hunks_unstaged"
+
+	const OLD_START = &"old_start"
+	const OLD_COUNT = &"old_count"
+	const NEW_START = &"new_start"
+	const NEW_COUNT = &"new_count"
+	const HEADING = &"heading"
+	const NO_NEWLINE = &"no_newline"
+	const LINES = &"lines"
+	const ORIGIN = &"origin"
+	const TEXT = &"text"
 
 	const HASH = &"hash"
 	const FULL_HASH = &"full_hash"

@@ -36,6 +36,7 @@ var status:Dictionary = {}
 var commits:Array[Dictionary] = []
 
 var _dock_data:Dictionary
+var _initialized:=false
 
 var _thread:Thread
 var _refresh_queued:bool = false
@@ -84,14 +85,19 @@ func _ready() -> void:
 
 	refresh_repos()
 	
+	await get_tree().process_frame
+	if not _initialized:
+		_apply_dock_data()
 
 
 func _apply_dock_data() -> void:
+	
 	current_repo = _dock_data.get(Keys.CURRENT_REPO, MAIN_REPO)
 	tab_container.set_current_tab(int(_dock_data.get(Keys.CURRENT_TAB, 0)))
 	_dock_data = {}
 	
 	_apply_current_repo()
+	_initialized = true
 
 
 func clean_up() -> void:
@@ -192,9 +198,12 @@ func refresh_status() -> void:
 
 
 func _status_task(repo_dir:String) -> void:
-	# both git calls share the one thread: the existing coalescing and stale-repo guard then cover
-	# the log for free, and a 100 commit log next to a status is a rounding error
+	# every git call shares the one thread: the existing coalescing and stale-repo guard then cover
+	# them for free, and a 100 commit log next to a status is a rounding error
 	var status_result = GitUtil.get_status(repo_dir)
+	# two more spawns for the whole worktree's diff, merged into status_result here on the worker
+	# thread — so the handoff below keeps its shape and a row click costs no git call at all
+	GitUtil.attach_diffs(repo_dir, status_result)
 	var log_result = GitUtil.get_log(repo_dir)
 	_on_status_ready.call_deferred(repo_dir, status_result, log_result)
 

@@ -2,22 +2,27 @@ extends VBoxContainer
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
+const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
 const SectionSplit = preload("res://addons/script_outline/src/ui/section_split.gd")
 const FileTabs = preload("res://addons/script_outline/src/file_tabs/file_tabs.gd")
-const ScriptOutline = preload("res://addons/script_outline/src/outline/outline.gd")
+const Outline = preload("res://addons/script_outline/src/outline/outline.gd")
 const GitPanel = preload("res://addons/script_outline/src/git/git_panel.gd")
 
 const SECTION_FILE_TABS = &"file_tabs"
 const SECTION_OUTLINE = &"outline"
 const SECTION_GIT = &"git"
 
+var settings_helper:SettingHelperEditor
+
+var enable_git_panel:bool = true
+
 var script_container:FileTabs
-var script_outline:ScriptOutline
-var git_panel:GitPanel
+var script_outline:Outline
+#var git_panel:GitPanel
 
 ## the section chain, top to bottom. sections[i] is the parent of sections[i + 1]
 var sections:Array[SectionSplit] = []
@@ -37,16 +42,16 @@ var editor_side_bar_vsplit:VSplitContainer
 var editor_script_list_vbox:VBoxContainer
 var editor_outline_vbox:VBoxContainer
 
-var _ui_controls := []
 
 func get_dock_data() -> Dictionary:
 	var data = {}
 	data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
 	data[Keys.SECTIONS] = _get_sections_data()
 
-	for control:Control in _ui_controls:
-		if control.has_method(&"get_dock_data"):
-			data.merge(control.get_dock_data(), true)
+	for section:SectionSplit in sections:
+		var content = section.get_content()
+		if content.has_method(&"get_dock_data"):
+			data.merge(content.get_dock_data(), true)
 
 	return data
 
@@ -56,9 +61,14 @@ func set_dock_data(data:Dictionary) -> void:
 	
 	_set_sections_data(_dock_data.get(Keys.SECTIONS, {}))
 
-	_ui_controls_call(&"set_dock_data", [data])
+	_sections_call(&"set_dock_data", [data])
 
 func _init():
+	settings_helper = SettingHelperEditor.new()
+	settings_helper.subscribe_property(self, &"enable_git_panel", EditorSet.ENABLE_GIT_PANEL, true)
+	settings_helper.initialize()
+	settings_helper.settings_changed.connect(_on_editor_settings_changed)
+	
 	add_theme_constant_override("separation", 0)
 
 	right_click_handler = RightClickHandler.new()
@@ -70,18 +80,11 @@ func _init():
 	_chain_margin.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	add_child(_chain_margin)
 
-	script_container = FileTabs.new()
-	script_container.right_click_handler = right_click_handler
-	add_section(SECTION_FILE_TABS, "Files", script_container)
-
-	script_outline = ScriptOutline.new()
-	script_outline.right_click_handler = right_click_handler
-	add_section(SECTION_OUTLINE, "Outline", script_outline)
-
-	git_panel = GitPanel.new()
-	add_section(SECTION_GIT, "Git", git_panel)
-
-	_ui_controls = [script_container, script_outline, git_panel]
+	_add_builtin_section(SECTION_FILE_TABS)
+	_add_builtin_section(SECTION_OUTLINE)
+	
+	# checks editor setting if git enabled
+	_on_editor_settings_changed()
 
 
 func _ready() -> void:
@@ -124,6 +127,12 @@ func add_section(section_id:StringName, title:String, content:Control) -> Sectio
 	set_margins(_in_script_editor_sidebar) # the chain grew, so which section is last moved
 	return section
 
+func remove_section_by_id(section_id:StringName):
+	var section = _get_section(section_id)
+	if is_instance_valid(section):
+		remove_section(section)
+	else:
+		print("Could not get ScriptOutline section ID: ", section_id)
 
 func remove_section(section:SectionSplit) -> void:
 	if not section in sections:
@@ -222,7 +231,7 @@ func _set_sections_data(data:Dictionary) -> void:
 
 ## Layouts saved before sections existed kept the outline's fold state on its own key.
 func _migrate_legacy_dock_data() -> void:
-	var outline_vis = _dock_data.get(ScriptOutline.OutlineKeys.DOCK_OUTLINE_VIS, true)
+	var outline_vis = _dock_data.get(Outline.OutlineKeys.DOCK_OUTLINE_VIS, true)
 	var outline_section = get_section(SECTION_OUTLINE)
 	if is_instance_valid(outline_section):
 		outline_section.collapsed_state = not outline_vis
@@ -261,24 +270,16 @@ func _on_section_options_pressed(id:StringName):
 	_merge_shared_options(options)
 	var section = _get_section(id)
 	right_click_handler.display_on_control(options, section.option_button)
-	if id == SECTION_OUTLINE:
-		
-		pass
-	elif id == SECTION_FILE_TABS:
-		pass
-	pass
+
 
 func _merge_options(options:Options, section_id:StringName):
-	if section_id == SECTION_OUTLINE:
-		var so_options = script_outline.get_options()
-		if not so_options.is_empty():
-			#options.add_separator("Outline")
-			options.merge(so_options)
-	elif section_id == SECTION_FILE_TABS:
-		var sc_options = script_container.get_options()
-		if not sc_options.is_empty():
-			#options.add_separator("Files")
-			options.merge(sc_options)
+	var section = _get_section(section_id)
+	if not is_instance_valid(section): return
+	var content = section.get_content()
+	if is_instance_valid(content) and content.has_method("get_options"):
+		var opts = content.get_options()
+		if not opts.is_empty():
+			options.merge(opts)
 
 func _merge_shared_options(options:Options) -> Options:
 	options.add_separator()
@@ -344,20 +345,47 @@ func set_margins(sidebar:bool):
 		var bottom = val if i == last else 0
 		sections[i].set_margins(val, val, val, 0)
 
+func _on_editor_settings_changed():
+	var git_panel = _get_section(SECTION_GIT)
+	var git_valid = is_instance_valid(git_panel)
+	if enable_git_panel and not git_valid:
+		_add_builtin_section(SECTION_GIT)
+	elif not enable_git_panel and git_valid:
+		remove_section(git_panel)
 
 func clean_up():
-	_ui_controls_call(&"clean_up")
+	_sections_call(&"clean_up")
 	_move_to_from_sidebar(false, false)
 
-func _ui_controls_call(callable_name:StringName, args:=[]):
+func _sections_call(callable_name:StringName, args:=[]):
 	var results = {}
-	for control:Control in _ui_controls:
-		if control.has_method(callable_name):
+	for section:SectionSplit in sections:
+		var content = section.get_content()
+		if content.has_method(callable_name):
 			if args.is_empty():
-				results[control] = control.call(callable_name)
+				results[content] = content.call(callable_name)
 			else:
-				results[control] = control.callv(callable_name, args)
+				results[content] = content.callv(callable_name, args)
 	return results
+
+func _add_builtin_section(section_id:StringName):
+	var control
+	var title = ""
+	if section_id == SECTION_FILE_TABS:
+		control = FileTabs.new()
+		title = "Files"
+	elif section_id == SECTION_GIT:
+		control = GitPanel.new()
+		title = "Git"
+	elif section_id == SECTION_OUTLINE:
+		control = Outline.new()
+		title = "Outline"
+	
+	for prop in ["right_click_handler"]:
+		if prop in control:
+			control.set(prop, get(prop))
+	
+	add_section(section_id, title, control)
 
 func _get_section(id:StringName):
 	for s in sections:
@@ -371,3 +399,6 @@ class Keys:
 	const SECTION_INDEX = &"index"
 	const SECTION_COLLAPSED = &"collapsed"
 	const SECTION_SPLIT_OFFSET = &"split_offset"
+
+class EditorSet:
+	const ENABLE_GIT_PANEL = &"plugin/script_outline/enable_git_panel"

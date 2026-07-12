@@ -28,8 +28,13 @@ func get_selected_path() -> String:
 
 
 func _get_status_color(file_data:Dictionary) -> Color:
-	if file_data.get(GitUtil.Keys.CONFLICTED, false):
-		return GitUtil.Colors.RED
+	# the line type settles conflicted and untracked outright, so neither can be shadowed by the
+	# staged/unstaged pair below
+	match file_data.get(GitUtil.Keys.KIND, GitUtil.Kind.ORDINARY):
+		GitUtil.Kind.UNMERGED:
+			return GitUtil.Colors.RED
+		GitUtil.Kind.UNTRACKED:
+			return GitUtil.Colors.L_GREEN
 
 	# staged with nothing left dirty on disk: the change is already safely in the index
 	var staged = file_data.get(GitUtil.Keys.STAGED, false)
@@ -37,9 +42,7 @@ func _get_status_color(file_data:Dictionary) -> Color:
 	if staged and not unstaged:
 		return GitUtil.Colors.GREEN
 
-	if file_data.get(GitUtil.Keys.UNTRACKED, false):
-		return GitUtil.Colors.L_GREEN
-	elif file_data.get(GitUtil.Keys.Y, "") == "M":
+	if file_data.get(GitUtil.Keys.WORKTREE, GitUtil.Status.NONE) == GitUtil.Status.MODIFIED:
 		return GitUtil.Colors.L_YELLOW
 
 	return get_dim_color()

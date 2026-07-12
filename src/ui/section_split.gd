@@ -29,8 +29,7 @@ var header_hbox:HBoxContainer
 var title_button:Button
 var option_button:Button
 var option_hbox:HBoxContainer
-var section_margin:MarginContainer
-var content_vbox:VBoxContainer
+var content_margin:MarginContainer
 
 
 ## The split position the user actually dragged to.
@@ -97,13 +96,9 @@ func _init(section_id:StringName, title:String) -> void:
 	option_button.flat = true
 	option_button.pressed.connect(func(): option_pressed.emit(id))
 	
-	section_margin = MarginContainer.new()
-	UControl.expand(section_margin)
-	main_vbox.add_child(section_margin)
-
-	content_vbox = VBoxContainer.new()
-	UControl.expand(content_vbox)
-	section_margin.add_child(content_vbox)
+	content_margin = MarginContainer.new()
+	UControl.expand(content_margin)
+	main_vbox.add_child(content_margin)
 
 
 func _ready() -> void:
@@ -115,8 +110,11 @@ func set_content(control:Control) -> void:
 	content = control
 	UControl.expand(content)
 	content.visible = not collapsed_state
-	content_vbox.add_child(content)
+	content_margin.add_child(content)
 
+func get_content():
+	if content_margin.get_child_count() > 0:
+		return content_margin.get_child(0)
 
 func add_header_button(button:Button) -> void:
 	var parent = button.get_parent()
@@ -137,15 +135,15 @@ func get_title() -> String:
 
 
 func set_margins(left:int, right:int, top:int, bottom:int) -> void:
-	section_margin.add_theme_constant_override("margin_left", left)
-	section_margin.add_theme_constant_override("margin_right", right)
-	section_margin.add_theme_constant_override("margin_top", top)
-	section_margin.add_theme_constant_override("margin_bottom", bottom)
+	content_margin.add_theme_constant_override("margin_left", left)
+	content_margin.add_theme_constant_override("margin_right", right)
+	content_margin.add_theme_constant_override("margin_top", top)
+	content_margin.add_theme_constant_override("margin_bottom", bottom)
 
 
 func set_content_stretch_ratio(ratio:float) -> void:
 	# the split sorts its direct children, so the ratio belongs on the margin, not the vbox
-	section_margin.size_flags_stretch_ratio = ratio
+	content_margin.size_flags_stretch_ratio = ratio
 
 
 func toggle() -> void:
@@ -176,7 +174,7 @@ func apply_layout_state(expanded_below:bool) -> void:
 	# is the one value _get_separation() zeroes, which would leave them flush against each other
 	dragger_visibility = DRAGGER_VISIBLE if draggable else DRAGGER_HIDDEN
 	
-	section_margin.visible = expanded
+	content_margin.visible = expanded
 	option_button.visible = expanded
 	
 	if draggable:
