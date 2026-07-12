@@ -53,7 +53,7 @@ func get_dock_data() -> Dictionary:
 func set_dock_data(data:Dictionary) -> void:
 	_dock_data = data
 	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR, true)
-
+	
 	_set_sections_data(_dock_data.get(Keys.SECTIONS, {}))
 
 	_ui_controls_call(&"set_dock_data", [data])

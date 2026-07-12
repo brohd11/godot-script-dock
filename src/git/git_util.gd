@@ -9,6 +9,13 @@ const UFile = UtilsRemote.UFile
 
 const MAX_DEPTH = 5
 
+const LOG_LIMIT = 100
+
+## ASCII unit separator, the field delimiter in the log format below. Safe where NUL was not: it is
+## a valid single byte UTF-8 character, so it survives the Godot String that OS.execute pipes the
+## process output through.
+const LOG_SEP = "\u001f"
+
 ## Never descended into. `.git` holds thousands of object files and none of them are
 ## project files; the rest is build noise.
 const PRUNE_DIRS:PackedStringArray = [".git", ".godot", ".import", "node_modules"]
@@ -120,6 +127,45 @@ static func get_status(repo_dir:String) -> Dictionary:
 			_parse_file(line, repo_dir, status[Keys.FILES])
 
 	return status
+
+
+## Blocking, like get_status — run it off the main thread.
+##
+## Newest first, in git's own order. `%s` is the subject, i.e. the first line only, so a record can
+## never contain a newline and one output line is exactly one commit. `%ar` is git's own relative
+## date ("2 days ago"), so there is no date maths here.
+static func get_log(repo_dir:String, limit:=LOG_LIMIT) -> Array[Dictionary]:
+	var commits:Array[Dictionary] = []
+
+	var fields = ["%h", "%s", "%an", "%ar", "%H"]
+	var result = run_git(repo_dir, [
+		"log",
+		"--max-count=%s" % limit,
+		"--pretty=format:" + LOG_SEP.join(fields),
+	])
+	# a repo with no commits yet exits non zero — that is not an error, it just has no history
+	if result[Keys.EXIT] != 0:
+		return commits
+
+	var output:Array = result[Keys.OUTPUT]
+	if output.is_empty():
+		return commits
+
+	for raw_line in String(output[0]).split("\n", false):
+		var line = raw_line.trim_suffix("\r")
+		var parts = line.split(LOG_SEP)
+		if parts.size() < fields.size():
+			continue
+
+		commits.append({
+			Keys.HASH: parts[0],
+			Keys.SUBJECT: parts[1],
+			Keys.AUTHOR: parts[2],
+			Keys.DATE: parts[3],
+			Keys.FULL_HASH: parts[4],
+		})
+
+	return commits
 
 
 static func _parse_branch(info:String) -> Dictionary:
@@ -260,6 +306,12 @@ class Keys:
 	const CONFLICTED = &"conflicted"
 	const RENAMED_FROM = &"renamed_from"
 	const LETTER = &"letter"
+
+	const HASH = &"hash"
+	const FULL_HASH = &"full_hash"
+	const SUBJECT = &"subject"
+	const AUTHOR = &"author"
+	const DATE = &"date"
 
 
 class Colors:
