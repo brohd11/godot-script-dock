@@ -137,9 +137,6 @@ func _add_saved_tabs():
 				script_tree = tab_control
 
 
-func get_margins():
-	return [self]
-
 func get_options():
 	var options = Options.new()
 	
