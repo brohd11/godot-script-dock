@@ -89,7 +89,7 @@ func warm(chars:String) -> void:
 
 	_chars = chars
 	var font = EditorInterface.get_editor_theme().get_font(&"main", &"EditorFonts")
-	var font_size = EditorInterface.get_editor_theme().get_font_size(&"main", &"EditorFonts")
+	var font_size = EditorInterface.get_editor_theme().get_font_size(&"main_size", &"EditorFonts")
 	if font == null or font_size <= 0:
 		return
 
@@ -210,7 +210,7 @@ func _on_editor_settings_changed() -> void:
 		return
 
 	var font = EditorInterface.get_editor_theme().get_font(&"main", &"EditorFonts")
-	var font_size = EditorInterface.get_editor_theme().get_font_size(&"main", &"EditorFonts")
+	var font_size = EditorInterface.get_editor_theme().get_font_size(&"main_size", &"EditorFonts")
 	if font == null or _make_key(font, font_size) == _key:
 		return # the settings that moved were not ones the squares are baked against
 

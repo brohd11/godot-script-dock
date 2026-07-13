@@ -80,12 +80,13 @@ func _ready() -> void:
 	change_list.name = "Changes"
 	tab_container.add_tab(change_list)
 	UtilsLocal.set_item_list_sb(change_list)
-
+	
 	commit_list = GitCommitList.new()
 	commit_list.name = "Commits"
 	tab_container.add_tab(commit_list)
 	UtilsLocal.set_item_list_sb(commit_list)
-	#commit_list.segment({})
+	
+	
 	status_updated.connect(_on_status_updated)
 	commits_updated.connect(_on_commits_updated)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed, 1)

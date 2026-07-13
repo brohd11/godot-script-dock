@@ -408,47 +408,47 @@ class OutlineTree extends Tree:
 		var classes = gdscript_parser.get_classes()
 		if classes.is_empty():
 			return
-		classes.erase("") # tree sitter places this at end
-		classes.push_front("") # just remove and push front
+		classes.sort_custom(
+			func(a, b):
+				var a_obj = gdscript_parser.get_class_object(a)
+				var b_obj = gdscript_parser.get_class_object(b)
+				return a_obj.declaration_line < b_obj.declaration_line
+				)
 		
 		for access_path in classes:
 			var class_obj = gdscript_parser.get_class_object(access_path) as ParserClass
-			#print( class_obj.get_members())
 			var class_base_type = class_obj.script_base_type
 			
-			var item_parent:TreeItem
-			item_parent = class_items.get(access_path)
-			if not is_instance_valid(item_parent):
-				var last_access = ""
-				if access_path.contains("."):
-					last_access = UString.trim_member_access_back(access_path)
-				var last_access_item = null
-				if last_access != "":
-					last_access_item = class_items.get(last_access)
-				
-				var full_access_path = UString.dot_join(last_access, access_path)
-				item_parent = create_item(last_access_item)
-				var _c_name = MemberData.get_main_script_name() if access_path == "" else UString.get_member_access_back(access_path)
-				item_parent.set_text(0, _c_name)
-				var meta = {
-					ParserKeys.ACCESS_PATH: full_access_path,
-					OutlineKeys.ITEM_TYPE: OutlineKeys.ITEM_TYPE_CLASS,
-					}
-				item_parent.set_metadata(0, meta)
-				
-				var icon_name = class_base_type
-				if not _editor_theme.has_icon(icon_name, _ED_ICONS): # icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, _ED_ICONS):
-					icon_name = "Object"
-				item_parent.set_icon(0, _editor_theme.get_icon(icon_name, _ED_ICONS))
-				
-				_set_collapsed(item_parent, access_path != "")
-				class_items[access_path] = item_parent
+			var last_access = ""
+			if access_path.contains("."):
+				last_access = UString.trim_member_access_back(access_path)
+			var last_access_item = null
+			if last_access != "":
+				last_access_item = class_items.get(last_access)
 			
-			var prop_parent:TreeItem = item_parent
-			var const_parent:TreeItem = item_parent
-			var func_parent:TreeItem = item_parent
+			var class_item = create_item(last_access_item)
+			var _c_name = MemberData.get_main_script_name() if access_path == "" else UString.get_member_access_back(access_path)
+			class_item.set_text(0, _c_name)
+			var cls_meta = {
+				#ParserKeys.ACCESS_PATH: full_access_path,
+				ParserKeys.ACCESS_PATH: access_path,
+				OutlineKeys.ITEM_TYPE: OutlineKeys.ITEM_TYPE_CLASS,
+				}
+			class_item.set_metadata(0, cls_meta)
+			
+			var icon_name = class_base_type
+			if not _editor_theme.has_icon(icon_name, _ED_ICONS): # icon_name == "RefCounted" or not editor_theme.has_icon(icon_name, _ED_ICONS):
+				icon_name = "Object"
+			class_item.set_icon(0, _editor_theme.get_icon(icon_name, _ED_ICONS))
+			
+			_set_collapsed(class_item, access_path != "")
+			class_items[access_path] = class_item
+			
+			var prop_parent:TreeItem = class_item
+			var const_parent:TreeItem = class_item
+			var func_parent:TreeItem = class_item
 			if true: # add a flag for categories?
-				const_parent = create_item(item_parent)
+				const_parent = create_item(class_item)
 				const_parent.set_text(0, "Constants")
 				const_parent.set_icon(0, _editor_theme.get_icon(&"MemberConstant", _ED_ICONS))
 				const_parent.set_metadata(0, { # should these have different paths? to keep collapse state
@@ -457,7 +457,7 @@ class OutlineTree extends Tree:
 					})
 				_set_collapsed(const_parent)
 				
-				prop_parent = create_item(item_parent)
+				prop_parent = create_item(class_item)
 				prop_parent.set_text(0, "Properties")
 				prop_parent.set_icon(0, _editor_theme.get_icon(&"MemberProperty", _ED_ICONS))
 				prop_parent.set_metadata(0, {
@@ -466,7 +466,7 @@ class OutlineTree extends Tree:
 					})
 				_set_collapsed(prop_parent)
 				
-				func_parent = create_item(item_parent)
+				func_parent = create_item(class_item)
 				func_parent.set_text(0, "Methods")
 				func_parent.set_icon(0, _editor_theme.get_icon(&"MemberMethod", _ED_ICONS))
 				func_parent.set_metadata(0, {
@@ -1016,7 +1016,7 @@ class OutlineTree extends Tree:
 		var gdscript_parser:GDScriptParser = EditorGDScriptParser.get_parser()
 		var code_edit = gdscript_parser.get_code_edit_parser().code_edit
 		var access_path:String = meta.get(ParserKeys.ACCESS_PATH)
-		var persisitent_data:Dictionary = get_item_persistent_data(access_path)
+		var persistent_data:Dictionary = get_item_persistent_data(access_path)
 		
 		var pr = Pr.new()
 		
@@ -1120,11 +1120,16 @@ class OutlineTree extends Tree:
 			pr.append(member_type_display, MemberData.keyword_color).append(" " + member_name.get_slice("-", 0), member_color)
 			
 			var type:String
+			var origin:String
 			if not is_local:
-				type = class_obj.get_member_type(member_name)
+				var type_rich = class_obj.get_member_type_rich(member_name)
+				type = type_rich.type
+				origin = type_rich.origin
 			else:
 				var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
-				type = func_obj.get_local_var_type(member_name)
+				var type_rich = func_obj.get_local_var_type_rich(member_name)
+				type = type_rich.type
+				origin = type_rich.origin
 			
 			if member_type == ParserKeys.MEMBER_TYPE_VAR or member_type == ParserKeys.MEMBER_TYPE_STATIC_VAR:
 				var dict_key_meta = get_dict_key_meta(gdscript_parser, line_index)
@@ -1163,17 +1168,23 @@ class OutlineTree extends Tree:
 						val = MemberData.trim_string(val)
 						pr.append(val, MemberData.member_var_color)
 			
+			# unsure about this. How to actually havr it display useful info
+			if origin != "":
+				var trimmed_origin = GDScriptParser.Utils.type_path_remove_type(origin.trim_suffix(GDScriptParser.Keys.INS_DELIM))
+				trimmed_origin = MemberData.trim_file_path(trimmed_origin, gdscript_parser)
+				pr.new_line().append("origin", MemberData.keyword_color).append(": ", MemberData.symbol_color).append(trimmed_origin)
+			
 			pr.new_line().append("line", MemberData.keyword_color).append(": ", MemberData.symbol_color).append("%s" % line_index)
 		
 		
-		var button_hints = persisitent_data.get("button_hints", [])
+		var button_hints = persistent_data.get("button_hints", [])
 		if not button_hints.is_empty():
 			pr.new_line().new_line().append("diagnostics", MemberData.keyword_color).append(":", MemberData.symbol_color)
 		for hint in button_hints:
 			if hint == OutlineKeys.HINT_NO_TYPE_INFER:
 				pr.new_line().append("\tType Hint - no explicit hint, can infer")
 		
-		var diag_hints = persisitent_data.get("diagnostic_hints", [])
+		var diag_hints = persistent_data.get("diagnostic_hints", [])
 		if not diag_hints.is_empty():
 			pr.new_line().new_line().append("diagnostics", MemberData.keyword_color).append(":", MemberData.symbol_color)
 		for hint in diag_hints:

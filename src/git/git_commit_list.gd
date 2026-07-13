@@ -67,6 +67,7 @@ func add_commit(commit:Dictionary) -> void:
 			&"text": commit.get(GitUtil.Keys.HASH, ""),
 			&"color": get_dim_color(), # dim, so the subject beside it reads as the primary
 			&"font": _mono_font, # font_size stays the list's: as an overlay it cannot affect the row
+			
 		}),
 	]
 	# a commit usually has no tag, and an empty segment would still cost a gap — so leave it out

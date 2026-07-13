@@ -47,7 +47,7 @@ const ELLIPSIS = "…"
 ##
 ## It moves every segment together, so whatever it is set to, the segments stay level with one
 ## another; it can only raise or lower the row's text as a block.
-const BASELINE_CENTER = 0.55
+const BASELINE_CENTER = 0.57
 
 enum Align {
 	LEFT,  ## flows immediately after whatever precedes it
@@ -103,7 +103,6 @@ static func segment(params:={}) -> Dictionary:
 
 func _ready() -> void:
 	resized.connect(_queue_fit)
-	#segment({})
 
 ## A segment's own face, or the list's. Every measure and every draw goes through these two, so a
 ## segment can never be measured with one font and drawn with another.
@@ -226,15 +225,15 @@ func _layout_row(row:Array, font:Font, font_size:int) -> Array:
 				text = "" # the icon *is* the segment now; nothing is drawn as a string
 			elif not seg.get(&"compact", "").is_empty():
 				text = seg[&"compact"]
-
+		
 		var seg_font = font if i == 0 else _seg_font(seg)
 		var seg_font_size = font_size if i == 0 else _seg_font_size(seg)
-
+		
 		out.append({
 			&"draw_text": text,
 			&"icon": icon,
 			&"x": 0.0,
-			&"width": icon.get_width() if icon != null else _string_width(seg_font, seg_font_size, text),
+			&"width": float(icon.get_width()) if icon != null else _string_width(seg_font, seg_font_size, text),
 			&"color": seg.get(&"color", Color.WHITE),
 			&"align": seg.get(&"align", Align.LEFT),
 			&"font": seg_font,
@@ -385,7 +384,8 @@ func _get_text_indent() -> float:
 
 
 func _get_text_start_x() -> float:
-	return get_theme_stylebox(&"panel").get_margin(SIDE_LEFT) + _get_text_indent()
+	var indent = _get_text_indent() * 0.5 # appears half gives a the exact amount, not sure if this coincendence, or actual math(split on ends)
+	return get_theme_stylebox(&"panel").get_margin(SIDE_LEFT) + indent
 
 
 ## The padding belongs here rather than at the point a right aligned segment is packed, so that the
