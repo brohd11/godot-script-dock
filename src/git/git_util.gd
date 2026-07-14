@@ -19,6 +19,10 @@ const LOG_FIELDS:PackedStringArray = ["%h", "%s", "%an", "%ar", "%H", "%D"]
 ## How git marks a tag inside `%D`, as opposed to a branch or HEAD.
 const TAG_PREFIX = "tag: "
 
+## `# branch.oid` gives the full 40 character sha, unlike `git log`'s %h. This is git's own default
+## abbreviation, and what a detached HEAD gets displayed as.
+const SHORT_OID = 7
+
 ## ASCII unit separator, the field delimiter in the log format below. Safe where NUL was not: it is
 ## a valid single byte UTF-8 character, so it survives the Godot String that OS.execute pipes the
 ## process output through.
@@ -107,6 +111,147 @@ static func get_letter_set() -> String:
 	return "".join(STATUS_LETTERS.values()) + "?"
 
 
+## How many files are in each state, from a get_status() result.
+##
+## STAGED and UNSTAGED are not exclusive — a file with staged hunks and further edits still on disk is
+## both — so these four do not partition TOTAL, and TOTAL is the file count rather than their sum.
+## Untracked and conflicted are line *kinds*, and settle a file outright.
+static func count_changes(status:Dictionary) -> Dictionary:
+	var counts = {
+		Keys.COUNT_STAGED: 0,
+		Keys.COUNT_UNSTAGED: 0,
+		Keys.COUNT_UNTRACKED: 0,
+		Keys.COUNT_CONFLICTED: 0,
+		Keys.COUNT_TOTAL: 0,
+	}
+
+	var files:Dictionary = status.get(Keys.FILES, {})
+	counts[Keys.COUNT_TOTAL] = files.size()
+
+	for file_data:Dictionary in files.values():
+		match file_data.get(Keys.KIND, Kind.ORDINARY):
+			Kind.UNTRACKED:
+				counts[Keys.COUNT_UNTRACKED] += 1
+				continue
+			Kind.UNMERGED:
+				counts[Keys.COUNT_CONFLICTED] += 1
+				continue
+
+		if file_data.get(Keys.STAGED, false):
+			counts[Keys.COUNT_STAGED] += 1
+		if file_data.get(Keys.UNSTAGED, false):
+			counts[Keys.COUNT_UNSTAGED] += 1
+
+	return counts
+
+
+## What the branch reads as, from a get_status() result's BRANCH dict.
+##
+## A detached HEAD has no name — branch.head reports "(detached)" — so it is named by its oid, which
+## is the whole reason BRANCH_OID is kept.
+static func get_branch_label(branch:Dictionary) -> String:
+	if branch.get(Keys.BRANCH_DETACHED, false):
+		var oid:String = branch.get(Keys.BRANCH_OID, "")
+		return "%s (detached)" % oid.substr(0, SHORT_OID) if not oid.is_empty() else "(detached)"
+
+	var name:String = branch.get(Keys.BRANCH_NAME, "")
+	if name.is_empty():
+		return "" # not a repo, or git is not on PATH — say nothing rather than guess
+
+	if branch.get(Keys.BRANCH_INITIAL, false):
+		return "%s (no commits)" % name
+
+	var upstream:String = branch.get(Keys.BRANCH_UPSTREAM, "")
+	if upstream.is_empty():
+		return name
+
+	return "%s → %s" % [name, upstream]
+
+
+## How far the branch has drifted from its upstream: "↑2 ↓1", or "" when in sync or untracked.
+##
+## Kept apart from get_branch_label because the two truncate differently. The label elides in a narrow
+## sidebar and an ellipsis eats the *end* of a string, so a single combined one would lose the
+## ahead/behind first — which is the half worth acting on.
+static func get_divergence_label(branch:Dictionary) -> String:
+	var parts:Array[String] = []
+	var ahead:int = branch.get(Keys.BRANCH_AHEAD, 0)
+	var behind:int = branch.get(Keys.BRANCH_BEHIND, 0)
+
+	if ahead > 0:
+		parts.append("↑%d" % ahead)
+	if behind > 0:
+		parts.append("↓%d" % behind)
+
+	return " ".join(parts)
+
+
+## Everything the panel's repo row shows, gathered from what the last refresh already fetched. Spawns
+## nothing: the branch and the files come out of get_status(), the commit out of get_log().
+static func get_repo_info(status:Dictionary, commits:Array) -> Dictionary:
+	return {
+		Keys.REPO: status.get(Keys.REPO, ""),
+		Keys.BRANCH: status.get(Keys.BRANCH, _new_branch()),
+		Keys.COUNTS: count_changes(status),
+		Keys.LAST_COMMIT: commits[0] if not commits.is_empty() else {},
+	}
+
+
+## The repo row's tooltip. Sections with nothing to say are left out rather than printed empty.
+static func format_repo_tooltip(info:Dictionary) -> String:
+	var blocks:Array[String] = []
+
+	var repo:String = info.get(Keys.REPO, "")
+	if not repo.is_empty():
+		blocks.append(repo)
+
+	var branch:Dictionary = info.get(Keys.BRANCH, {})
+	var branch_lines:Array[String] = []
+	var label = get_branch_label(branch)
+	if not label.is_empty():
+		branch_lines.append(label)
+
+	var ahead:int = branch.get(Keys.BRANCH_AHEAD, 0)
+	var behind:int = branch.get(Keys.BRANCH_BEHIND, 0)
+	if ahead > 0 or behind > 0:
+		var drift:Array[String] = []
+		if ahead > 0:
+			drift.append("↑%d ahead" % ahead)
+		if behind > 0:
+			drift.append("↓%d behind" % behind)
+		branch_lines.append(" · ".join(drift))
+
+	if not branch_lines.is_empty():
+		blocks.append("\n".join(branch_lines))
+
+	blocks.append(_format_counts(info.get(Keys.COUNTS, {})))
+
+	var commit:Dictionary = info.get(Keys.LAST_COMMIT, {})
+	if not commit.is_empty():
+		blocks.append("%s  %s\n%s · %s" % [
+			commit.get(Keys.HASH, ""),
+			commit.get(Keys.SUBJECT, ""),
+			commit.get(Keys.AUTHOR, ""),
+			commit.get(Keys.DATE, ""),
+		])
+
+	return "\n\n".join(blocks)
+
+
+static func _format_counts(counts:Dictionary) -> String:
+	var total:int = counts.get(Keys.COUNT_TOTAL, 0)
+	if total == 0:
+		return "Clean"
+
+	var parts:Array[String] = []
+	for key in [Keys.COUNT_STAGED, Keys.COUNT_UNSTAGED, Keys.COUNT_UNTRACKED, Keys.COUNT_CONFLICTED]:
+		var n:int = counts.get(key, 0)
+		if n > 0:
+			parts.append("%d %s" % [n, key])
+
+	return "%d changed — %s" % [total, ", ".join(parts)]
+
+
 static func _status_display(file_data:Dictionary, table:Dictionary, untracked:String, conflict:String, unknown:String) -> String:
 	match file_data.get(Keys.KIND, Kind.ORDINARY):
 		Kind.UNTRACKED:
@@ -118,7 +263,7 @@ static func _status_display(file_data:Dictionary, table:Dictionary, untracked:St
 	var index:Status = file_data.get(Keys.INDEX, Status.NONE)
 	return table.get(worktree if worktree != Status.NONE else index, unknown)
 
-
+#! keys exit:int output:Array
 static func run_git(repo_dir:String, args:Array) -> Dictionary:
 	# globalized, not project relative: `git -C` resolves a relative path against the editor
 	# process's working directory, which is not the project root
@@ -309,6 +454,7 @@ static func _parse_refs(field:String) -> Array[String]:
 static func _new_branch() -> Dictionary:
 	return {
 		Keys.BRANCH_NAME: "",
+		Keys.BRANCH_OID: "",
 		Keys.BRANCH_UPSTREAM: "",
 		Keys.BRANCH_AHEAD: 0,
 		Keys.BRANCH_BEHIND: 0,
@@ -326,7 +472,12 @@ static func _parse_branch_header(line:String, branch:Dictionary) -> void:
 
 	match parts[1]:
 		"branch.oid":
+			# the oid is the *only* thing a detached HEAD can be named by: branch.head reports
+			# "(detached)" and leaves the name empty, so without this there is nothing to show for
+			# precisely the state you most want telling about
 			branch[Keys.BRANCH_INITIAL] = parts[2] == "(initial)"
+			if not branch[Keys.BRANCH_INITIAL]:
+				branch[Keys.BRANCH_OID] = parts[2]
 		"branch.head":
 			if parts[2] == "(detached)":
 				branch[Keys.BRANCH_DETACHED] = true
@@ -625,6 +776,27 @@ static func _unquote_path(path:String) -> String:
 	return out
 
 
+#region Commands
+
+static func add_files(repo_dir:String, paths:Array):
+	_globalize_paths(paths)
+	var commands = ["add"]
+	commands.append_array(paths)
+	print(repo_dir, commands)
+	#return
+	var result = run_git(repo_dir, commands)
+	print(result.exit, result.output)
+
+
+static func _globalize_paths(paths:Array):
+	for i in paths.size():
+		var path = paths[i]
+		paths[i] = ProjectSettings.globalize_path(path)
+
+#endregion
+
+
+
 class Keys:
 	const EXIT = &"exit"
 	const OUTPUT = &"output"
@@ -632,13 +804,25 @@ class Keys:
 	const REPO = &"repo"
 	const BRANCH = &"branch"
 	const FILES = &"files"
+	const COUNTS = &"counts"
+	const LAST_COMMIT = &"last_commit"
 
 	const BRANCH_NAME = &"name"
+	## HEAD's commit, and the only handle on a detached HEAD, which has no name
+	const BRANCH_OID = &"oid"
 	const BRANCH_UPSTREAM = &"upstream"
 	const BRANCH_AHEAD = &"ahead"
 	const BRANCH_BEHIND = &"behind"
 	const BRANCH_DETACHED = &"detached"
 	const BRANCH_INITIAL = &"initial"
+
+	## a file can be both staged and unstaged, so these do not partition TOTAL — only TOTAL is the
+	## number of files
+	const COUNT_STAGED = &"staged"
+	const COUNT_UNSTAGED = &"unstaged"
+	const COUNT_UNTRACKED = &"untracked"
+	const COUNT_CONFLICTED = &"conflicted"
+	const COUNT_TOTAL = &"total"
 
 	const KIND = &"kind"
 	const INDEX = &"index"

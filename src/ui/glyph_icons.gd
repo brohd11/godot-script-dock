@@ -26,19 +26,17 @@ extends Node
 ##
 ## The cost of that is one rendered frame, once, for the whole character set — see warm().
 
+const NODE_NAME = &"GlyphIcons"
+
 ## unscaled px of clear space around the ink on every side
 const PAD = 1
 ## unscaled px the square will not go below, so a narrow set of glyphs still yields a usable icon
 const MIN_SIDE = 12
 
-## Set on _ready and read by the static accessors. The cache outlives any one list, and the lists
-## have no business holding a reference to this node.
-static var _instance:Node
-
 ## character (String) -> ImageTexture, white on transparent, ink centred
-static var _cache:Dictionary = {}
+var _cache:Dictionary = {}
 ## the square's side in px, shared by every texture in _cache
-static var _side:int = 0
+var _side:int = 0
 
 signal generated
 
@@ -47,35 +45,21 @@ var _key:String = ""
 var _chars:String = ""
 var _warming:bool = false
 
-
 ## The cached texture for a character, or null if the cache has not been baked yet.
 ##
 ## Null is a normal return, not an error: warm() takes a frame, and a caller that lands inside it
 ## should fall back to drawing the character as a string. Connect to `generated` to pick the texture
 ## up once it exists.
-static func get_letter(letter:String) -> Texture2D:
+func get_letter(letter:String) -> Texture2D:
 	return _cache.get(letter)
 
-
 ## The side of every square in the cache, in px. 0 until the first bake lands.
-static func get_side() -> int:
+func get_side() -> int:
 	return _side
 
-
-static func get_singleton() -> Node:
-	return _instance
-
-
 func _ready() -> void:
-	_instance = self
 	# font size and editor scale both live in the editor settings, and both change the square
 	EditorInterface.get_editor_settings().settings_changed.connect(_on_editor_settings_changed)
-
-
-func _exit_tree() -> void:
-	if _instance == self:
-		_instance = null
-
 
 ## Bake `chars` into the cache. Costs one rendered frame, for the whole set at once.
 ##

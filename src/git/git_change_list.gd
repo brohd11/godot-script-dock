@@ -13,16 +13,32 @@ extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
 ## null and the segment falls through to its `compact` string, which is what the list drew before the
 ## textures existed; nothing here has to wait on the bake.
 
+const RightClickHandler = UtilsRemote.RightClickHandler
+const Options = UtilsRemote.Options
+
+
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
+
+enum ChangesCommand{
+	ADD,
+}
 
 ## unscaled px of list width below which the status word gives way to its letter
 const COMPACT_BELOW = 200.0
 
+var glyph_icons:GlyphIcons
+
+signal changes_command(command:ChangesCommand, paths:Array)
 
 func _ready() -> void:
 	super()
 	compact_below = COMPACT_BELOW * EditorInterface.get_editor_scale()
+	
+	select_mode = ItemList.SELECT_MULTI
+	allow_rmb_select = true
+	item_clicked.connect(_on_item_clicked)
+	glyph_icons = ScriptOutline.get_glyph_icons_node()
 
 
 func clear_changes() -> void:
@@ -32,6 +48,8 @@ func clear_changes() -> void:
 func add_change(res_path:String, repo_dir:String, file_data:Dictionary) -> void:
 	var dir = res_path.get_base_dir().trim_prefix(repo_dir).trim_prefix("/")
 	var letter = GitUtil.get_status_letter(file_data)
+
+	var compact_icon = glyph_icons.get_letter(letter) if is_instance_valid(glyph_icons) else null
 
 	add_row(
 		res_path.get_file(),
@@ -47,7 +65,7 @@ func add_change(res_path:String, repo_dir:String, file_data:Dictionary) -> void:
 				&"align": Align.RIGHT,
 				&"compact": letter,
 				# null while the cache is cold; the letter above covers it
-				&"compact_icon": GlyphIcons.get_letter(letter),
+				&"compact_icon": compact_icon,
 			}),
 		],
 		null, # the file name keeps ItemList's own colour: it is the primary here
@@ -59,6 +77,14 @@ func add_change(res_path:String, repo_dir:String, file_data:Dictionary) -> void:
 func get_selected_path() -> String:
 	var path = get_selected_metadata()
 	return path if path != null else ""
+
+func get_selected_paths():
+	var paths = []
+	for i in get_selected_items():
+		var meta = get_item_metadata(i)
+		if meta:
+			paths.append(meta)
+	return paths
 
 
 func _get_status_color(file_data:Dictionary) -> Color:
@@ -80,3 +106,24 @@ func _get_status_color(file_data:Dictionary) -> Color:
 		return GitUtil.Colors.L_YELLOW
 
 	return get_dim_color()
+
+func _on_item_clicked(_index:int, _at_pos:Vector2, mouse_button:int):
+	if mouse_button == MOUSE_BUTTON_RIGHT:
+		_on_item_right_clicked()
+
+func _on_item_right_clicked():
+	
+	var selected_paths = get_selected_paths()
+	var options = Options.new()
+	if selected_paths.size() == 1:
+		var path = selected_paths[0]
+		var valid = UtilsLocal.GenericFileContext.right_click(options, path)
+		if valid != UtilsLocal.GenericFileContext.FileStatus.VALID:
+			options = Options.new()
+	
+	options.add_option("Stage Changes", _changes_command.bind(ChangesCommand.ADD, selected_paths))
+	
+	ScriptOutline.get_right_click_handler().display_popup(options)
+
+func _changes_command(command:ChangesCommand, paths:Array):
+	changes_command.emit(command, paths)

@@ -1,5 +1,7 @@
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 
+const Options = UtilsRemote.Options
+
 const ScriptListManager = UtilsRemote.ScriptListManager
 const UGDScript = UtilsRemote.UGDScript
 const EditorColors = UtilsRemote.EditorColors
@@ -8,6 +10,8 @@ const CacheHelper = UtilsRemote.CacheHelper
 const ItemKeys = UtilsRemote.FSTree.ItemKeys
 
 const FileData = FileSystemSingleton.FileData
+
+const GenericFileContext = preload("res://addons/script_outline/src/utils/generic_file_context.gd")
 
 static func get_file_data(file_path:String, script_data_cache:Dictionary):
 	var data = CacheHelper.get_cached_data(file_path, script_data_cache)
@@ -55,5 +59,10 @@ static func set_item_list_sb(item_list:ItemList):
 	var sb:StyleBoxFlat = item_list.get_theme_stylebox("panel").duplicate()
 	sb.content_margin_right = 0
 	item_list.add_theme_stylebox_override("panel", sb)
-	
-	
+
+
+
+static func get_script_tabs_node():
+	var root = Engine.get_main_loop().root
+	var ed_node = root.get_child(0) as Node
+	return ed_node.get_node_or_null("EditorSingletons/ScriptTabSingleton")

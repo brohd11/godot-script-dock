@@ -6,6 +6,7 @@ const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
+const UFile = UtilsRemote.UFile
 
 const SectionSplit = preload("res://addons/script_outline/src/ui/section_split.gd")
 const FileTabs = preload("res://addons/script_outline/src/file_tabs/file_tabs.gd")
@@ -88,6 +89,7 @@ func _init():
 
 
 func _ready() -> void:
+	
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 
 	dock_button = PluginButton.new().get_button()
@@ -391,6 +393,18 @@ func _get_section(id:StringName):
 	for s in sections:
 		if s.id == id:
 			return s
+
+
+# tab specific
+func show_in_tree(path:String):
+	var file_tab = get_section(SECTION_FILE_TABS)
+	if not is_instance_valid(file_tab):
+		return
+	if file_tab.collapsed_state:
+		file_tab.toggle()
+	file_tab.get_content().show_in_tree(path)
+
+
 
 class Keys:
 	const IN_SCRIPT_EDITOR_SIDEBAR = &"sidebar_container.in_script_editor_sidebar"

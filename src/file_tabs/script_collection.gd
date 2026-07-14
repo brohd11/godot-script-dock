@@ -33,8 +33,6 @@ var script_list_manager:ScriptListManager
 
 var _script_data_cache:= {}
 
-var right_click_handler:RightClickHandler
-
 var filter_line_edit:LineEdit
 var item_list:ItemList
 
@@ -45,7 +43,6 @@ var collection_data:Dictionary = {}
 var current_collection:CollectionBase
 
 signal collection_update(collection_tab:Self)
-signal show_in_filesystem(path:String)
 
 func _init() -> void:
 	name = "unsaved"
@@ -326,51 +323,12 @@ func _custom_right_click():
 	var idx = get_selected_item()
 	var path = get_item_path(idx)
 	
-	var script_tabs = _get_script_tabs_node()
-	if is_instance_valid(script_tabs):
-		var valid_containers = script_tabs.get_valid_containers_for_path(path, _open_in_split)
-		options._dict.merge(valid_containers)
+	var valid:UtilsLocal.GenericFileContext.FileStatus = UtilsLocal.GenericFileContext.right_click(options, path)
+	if valid == UtilsLocal.GenericFileContext.FileStatus.VALID:
+		options.add_separator()
+		options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
 	
-	
-	
-	options.add_option("Copy Script Path", _copy_to_clipboard, ["ActionCopy"])
-	options.add_option("Copy Script UID", _copy_to_clipboard.bind(true))
-	options.add_separator()
-	options.add_option("Show in Tree", _navigate_to, ["ShowInFileSystem"])
-	options.add_option("Show in File Manager", _navigate_to.bind(true), ["Filesystem"])
-	options.add_separator()
-	options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
-	
-	
-		
-	
-	right_click_handler.display_popup(options)
-
-func _open_in_split(target_tab:int):
-	var item = get_selected_item()
-	if item > -1:
-		var script_tabs = _get_script_tabs_node()
-		if not is_instance_valid(script_tabs):
-			printerr("No ScriptTab singleton found. How did you get here?")
-			return
-		var path = get_item_path(item)
-		script_tabs.open_script(path, target_tab, filesystem_singleton)
-
-func _copy_to_clipboard(uid:=false):
-	var item = get_selected_item()
-	if item > -1:
-		var to_clip = get_item_uid(item) if uid else get_item_path(item)
-		DisplayServer.clipboard_set(to_clip)
-
-func _navigate_to(os_file:=false):
-	var item = get_selected_item()
-	if item > -1:
-		var path = get_item_path(item)
-		if os_file:
-			OS.shell_show_in_file_manager(ProjectSettings.globalize_path(path))
-		else:
-			show_in_filesystem.emit(path)
-			#EditorInterface.get_file_system_dock().navigate_to_path(path)
+	ScriptOutline.get_right_click_handler().display_popup(options)
 
 
 func _open_or_activate_path(path:String, right_click:=false, click_pos:=Vector2()):

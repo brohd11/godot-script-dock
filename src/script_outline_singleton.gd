@@ -4,11 +4,14 @@ const SingletonRefCount = Singletons.RefCount
 
 const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
+const RightClickHandler = UtilsRemote.RightClickHandler
 
 const SideBarContainer = preload("res://addons/script_outline/src/sidebar_container.gd")
 const VarInsertContext = preload("res://addons/script_outline/src/editor_plugins/var_insert.gd")
 const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
+
+const _CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
 
 
 #region SingletonAPI
@@ -52,7 +55,9 @@ var sidebar_container:SideBarContainer
 var dm_instance_manager:DockManager.InstanceManager
 
 var var_insert_context:VarInsertContext
-var glyph_icons:GlyphIcons
+
+var _script_data_cache:Dictionary = {}
+var right_click_handler:RightClickHandler
 
 func _get_plugin_name() -> String:
 	return "Script Outline"
@@ -64,18 +69,26 @@ func _ready() -> void:
 	FileSystemSingleton.register_node(initial_plugin)
 	EditorGDScriptParser.register_node(initial_plugin)
 	#ScriptEditorRef.subscribe()
-
+	var script_cache = UFile.get_data_bin(_CACHE_BIN_PATH)
+	if script_cache != null:
+		_script_data_cache = script_cache
+		# comment for now, need to work off of icon names, not icons for serialization
+		pass
+	
+	right_click_handler = RightClickHandler.new()
+	add_child(right_click_handler)
+	
 	# Baking the status letters costs one rendered frame, so it starts here — the earliest point there
 	# is a tree to render in, and a long way ahead of the first `git status`, which is a process spawn
 	# on a worker thread. Nothing blocks on it: a row built before the bake lands draws its letter as
 	# a string and is rebuilt when GlyphIcons reports in.
-	glyph_icons = GlyphIcons.new()
-	add_child(glyph_icons)
+	var glyph_icons = _get_glyph_icons_node()
 	glyph_icons.warm(GitUtil.get_letter_set())
 
 	var_insert_context = VarInsertContext.new()
 	initial_plugin.add_context_menu_plugin(EditorContextMenuPlugin.CONTEXT_SLOT_SCRIPT_EDITOR_CODE, var_insert_context)
 	
+	await get_tree().process_frame
 	sidebar_container = SideBarContainer.new()
 	
 	dm_instance_manager = DockManager.InstanceManager.new(initial_plugin, false, true)
@@ -103,6 +116,9 @@ func clean_up() -> void:
 	if is_instance_valid(dm_instance_manager):
 		dm_instance_manager.clean_up()
 	
+	#UFile.store_data_bin(_script_data_cache, _CACHE_BIN_PATH)
+
+	
 	if free_plug:
 		plugin.queue_free()
 
@@ -117,6 +133,26 @@ static func remove_section(section_id:StringName):
 	var ins = get_instance()
 	ins.sidebar_container.remove_section_by_id(section_id)
 
+static func get_glyph_icons_node():
+	var ins = get_instance()
+	return ins._get_glyph_icons_node()
+
+func _get_glyph_icons_node():
+	var glyph_node = get_node_or_null(NodePath(GlyphIcons.NODE_NAME))
+	if not is_instance_valid(glyph_node):
+		glyph_node = GlyphIcons.new()
+		glyph_node.name = GlyphIcons.NODE_NAME
+		add_child(glyph_node)
+	return glyph_node
+
+static func get_script_data_cache():
+	return get_instance()._script_data_cache
+
+static func get_right_click_handler():
+	return get_instance().right_click_handler
+
+static func show_in_tree(path:String):
+	get_instance().sidebar_container.show_in_tree(path)
 
 static func test():
 	remove_section("Test")

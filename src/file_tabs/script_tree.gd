@@ -20,8 +20,6 @@ const NEW_TAB = "New Tab"
 
 var script_list_manager:ScriptListManager
 
-var right_click_handler:RightClickHandler
-
 var immutable:bool = false
 var script_tree:Tree
 

@@ -23,6 +23,9 @@ extends ItemList
 ## row's height from — so the Commits list, whose hash has to be mono, cannot let the hash be the item
 ## text without the whole list growing to fit the mono line box. See ROW_SPACER.
 
+const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
+const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+
 const DIM_ALPHA = 0.5
 
 ## ItemList gives a row no height unless it has text to shape — the row size is `MAX(icon, text)` and

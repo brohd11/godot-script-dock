@@ -15,14 +15,15 @@ const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 const GitChangeList = preload("res://addons/script_outline/src/git/git_change_list.gd")
 const GitCommitList = preload("res://addons/script_outline/src/git/git_commit_list.gd")
-const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
-
 
 const MAIN_REPO = "res://"
 const MAIN_REPO_TITLE = "Project"
 const REFRESH_DEBOUNCE = 1.0
 
 var repo_option_button:OptionButton
+var branch_row:HBoxContainer
+var branch_label:Label
+var divergence_label:Label
 var tab_container:TabBarContainer
 var change_list:GitChangeList
 var commit_list:GitCommitList
@@ -72,12 +73,30 @@ func _ready() -> void:
 	repo_option_button.item_selected.connect(_on_repo_selected)
 	add_child(repo_option_button)
 
+	# The tooltip goes on the row, not on either Label: Label sets its own mouse_filter to IGNORE, so
+	# a tooltip on one would never fire — and that same IGNORE is what lets the mouse fall through to
+	# the row, which is what the tooltip describes anyway.
+	branch_row = HBoxContainer.new()
+	branch_row.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(branch_row)
+
+	# the branch name is the one that gives way: an ellipsis eats the end of a string, so leaving the
+	# divergence in here with it would truncate the half worth acting on first
+	branch_label = Label.new()
+	branch_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	branch_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	branch_row.add_child(branch_label)
+
+	divergence_label = Label.new()
+	branch_row.add_child(divergence_label)
+
 	tab_container = TabBarContainer.new()
 	add_child(tab_container)
 	UControl.expand(tab_container)
 
 	change_list = GitChangeList.new()
 	change_list.name = "Changes"
+	change_list.changes_command.connect(_on_changes_command)
 	tab_container.add_tab(change_list)
 	UtilsLocal.set_item_list_sb(change_list)
 	
@@ -91,18 +110,23 @@ func _ready() -> void:
 	commits_updated.connect(_on_commits_updated)
 	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed, 1)
 
+
+	refresh_repos()
+	
+	#await get_tree().process_frame
+	
+	
 	# The status letters are baked textures, and a row picks its texture up at the moment it is built.
 	# The bake is a frame's work and is kicked off at plugin start, so it is all but certain to be
 	# done before the first `git status` returns — but if it is not, or if it is redone because the
 	# editor's font changed, the rows that missed it are still drawing the letter as a string. Rebuild
 	# them and they take the texture.
-	var glyph_icons = GlyphIcons.get_singleton()
+	
+	var glyph_icons = ScriptOutline.get_glyph_icons_node()
 	if is_instance_valid(glyph_icons):
 		glyph_icons.generated.connect(_rebuild_change_list)
 
-	refresh_repos()
 	
-	await get_tree().process_frame
 	if not _initialized:
 		_apply_dock_data()
 
@@ -161,14 +185,42 @@ func set_repo(repo_dir:String) -> void:
 	refresh_status()
 
 
-## Don't leave one repo's rows on screen while another repo's data is in flight.
+## Don't leave one repo's rows on screen while another repo's data is in flight — the branch least of
+## all, since the old one sitting under the new repo's name is a worse lie than showing nothing.
 func _clear_lists() -> void:
 	change_list.clear_changes()
 	commit_list.clear_commits()
 
+	branch_label.text = ""
+	divergence_label.hide()
+	branch_row.tooltip_text = ""
+
 
 func _on_status_updated(_repo_dir:String) -> void:
 	_rebuild_change_list()
+	_update_repo_info()
+
+
+## Spawns nothing: the branch and the counts come out of the status we already have, the commit out of
+## the log fetched on the same worker pass. Reading `commits` here is not a frame behind, because
+## _on_status_ready assigns both members before it emits either signal.
+func _update_repo_info() -> void:
+	var info = GitUtil.get_repo_info(status, commits)
+	var branch:Dictionary = info[GitUtil.Keys.BRANCH]
+
+	branch_label.text = GitUtil.get_branch_label(branch)
+
+	var divergence = GitUtil.get_divergence_label(branch)
+	divergence_label.text = divergence
+	divergence_label.visible = not divergence.is_empty()
+
+	# behind means there is something to pull, which is the one that wants noticing
+	if not divergence.is_empty():
+		divergence_label.add_theme_color_override(&"font_color",
+			GitUtil.Colors.L_YELLOW if branch[GitUtil.Keys.BRANCH_BEHIND] > 0
+			else GitUtil.Colors.L_GREEN)
+
+	branch_row.tooltip_text = GitUtil.format_repo_tooltip(info)
 
 
 func _on_commits_updated(_repo_dir:String) -> void:
@@ -248,6 +300,10 @@ func _join_thread() -> void:
 	# status finished point
 	#print(status)
 
+
+func _on_changes_command(command:GitChangeList.ChangesCommand, paths:Array):
+	if command == GitChangeList.ChangesCommand.ADD:
+		GitUtil.add_files(current_repo, paths)
 
 func _on_filesystem_changed() -> void:
 	_debounce_timer.start()
