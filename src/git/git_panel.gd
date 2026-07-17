@@ -1,10 +1,11 @@
 extends VBoxContainer
 
-## The sidebar's Git section.
+## The sidebar's Git section — a view over GitService.
 ##
-## Owns the repo list, the current selection, the per-file status dict and the commit log. Both git
-## calls run off the main thread and are published through `status_updated` / `commits_updated`,
-## which drive the Changes and Commits lists.
+## Holds no git state of its own: it renders GitService's status/commits/repos and pushes user
+## actions (repo select, stage/discard) back to it. GitService runs the git calls off the main thread
+## and publishes `status_updated` / `commits_updated` / `repos_updated`, which drive the branch info,
+## the Changes list and the Commits list.
 
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 const UControl = UtilsRemote.UControl
@@ -13,15 +14,11 @@ const TabBarContainer = UtilsRemote.TabBarContainer
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 
 const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
-const DiffGutter = preload("res://addons/script_dock/src/git/git_diff_gutter.gd")
 const GitChangeList = preload("res://addons/script_dock/src/git/git_change_list.gd")
 const GitCommitList = preload("res://addons/script_dock/src/git/git_commit_list.gd")
 
 const MAIN_REPO = "res://"
 const MAIN_REPO_TITLE = "Project"
-const REFRESH_DEBOUNCE = 1.0
-
-var diff_gutter:DiffGutter
 
 var repo_option_button:OptionButton
 var branch_row:HBoxContainer
@@ -31,33 +28,16 @@ var tab_container:TabBarContainer
 var change_list:GitChangeList
 var commit_list:GitCommitList
 
-
-signal status_updated(repo_dir:String)
-signal commits_updated(repo_dir:String)
-signal repos_updated
-
-## res:// paths of every repo found under the project
-var repos:Array[String] = []
-var current_repo:String = MAIN_REPO
-## the last GitUtil.get_status() result for current_repo
-var status:Dictionary = {}
-## the last GitUtil.get_log() result for current_repo, newest first
-var commits:Array[Dictionary] = []
+# the shared data provider — bound in _ready, the source of every value rendered here
+var _git:GitService
 
 var _dock_data:Dictionary
 var _initialized:=false
 
-var _thread:Thread
-var _refresh_queued:bool = false
-var _debounce_timer:Timer
-
-# commands waiting for the worker thread, as [command, paths] — see run_command()
-var _pending_commands:Array = []
-
 
 func get_dock_data() -> Dictionary:
 	return {
-		Keys.CURRENT_REPO: current_repo,
+		Keys.CURRENT_REPO: _git.current_repo if is_instance_valid(_git) else MAIN_REPO,
 		Keys.CURRENT_TAB: tab_container.get_tab_bar().current_tab,
 	}
 
@@ -69,15 +49,6 @@ func set_dock_data(data:Dictionary) -> void:
 
 
 func _ready() -> void:
-	_debounce_timer = Timer.new()
-	_debounce_timer.one_shot = true
-	_debounce_timer.wait_time = REFRESH_DEBOUNCE
-	_debounce_timer.timeout.connect(refresh_status)
-	add_child(_debounce_timer)
-	
-	diff_gutter = DiffGutter.new()
-	add_child(diff_gutter)
-
 	repo_option_button = OptionButton.new()
 	repo_option_button.item_selected.connect(_on_repo_selected)
 	add_child(repo_option_button)
@@ -102,102 +73,93 @@ func _ready() -> void:
 	add_child(tab_container)
 	UControl.expand(tab_container)
 
-	
-
 	change_list = GitChangeList.new()
 	change_list.name = "Changes"
 	change_list.changes_command.connect(_on_changes_command)
 	tab_container.add_tab(change_list)
 	UtilsLocal.set_item_list_sb(change_list)
-	
+
 	commit_list = GitCommitList.new()
 	commit_list.name = "Commits"
 	tab_container.add_tab(commit_list)
 	UtilsLocal.set_item_list_sb(commit_list)
-	
-	
-	status_updated.connect(_on_status_updated)
-	commits_updated.connect(_on_commits_updated)
-	EditorInterface.get_resource_filesystem().filesystem_changed.connect(_on_filesystem_changed, 1)
 
-
-	refresh_repos()
-	
-	#await get_tree().process_frame
-	
-	
 	# a row picks its status texture up when it is built, so rows built before the bake landed — or
 	# before a re-bake after the editor's font changed — are still drawing the letter as a string
-	var glyph_icons = ScriptDock.get_glyph_icons_node()
+	var glyph_icons = GitService.get_glyph_icons_node()
 	if is_instance_valid(glyph_icons):
 		glyph_icons.generated.connect(_rebuild_change_list)
-	
-	
+
+	# GitService is registered by ScriptDock before the sidebar is built, so it is ready here
+	_bind_service()
+
 	if not _initialized:
 		_apply_dock_data()
 
 
+func _bind_service() -> void:
+	_git = GitService.get_instance()
+	if not is_instance_valid(_git):
+		# nothing to render against; a later status/repos change would emit into a dead panel anyway
+		return
+
+	_git.status_updated.connect(_on_status_updated)
+	_git.commits_updated.connect(_on_commits_updated)
+	_git.repos_updated.connect(_on_repos_updated)
+
+	# the service may have scanned before this panel existed — render whatever it already holds
+	_on_repos_updated()
+	if not _git.status.is_empty():
+		_on_status_updated(_git.current_repo)
+	if not _git.commits.is_empty():
+		_on_commits_updated(_git.current_repo)
+
+
 func _apply_dock_data() -> void:
-	current_repo = _dock_data.get(Keys.CURRENT_REPO, MAIN_REPO)
 	tab_container.set_current_tab(int(_dock_data.get(Keys.CURRENT_TAB, 0)))
+	var saved_repo:String = _dock_data.get(Keys.CURRENT_REPO, MAIN_REPO)
 	_dock_data = {}
-	
-	_apply_current_repo()
+
+	# restore the selected repo through the service; set_repo no-ops if it is already current
+	if is_instance_valid(_git) and saved_repo != _git.current_repo and saved_repo in _git.repos:
+		_clear_lists() # don't leave the default repo's rows up while the restored repo's calls run
+		_git.set_repo(saved_repo)
+
 	_initialized = true
 
 
 func clean_up() -> void:
-	_join_thread()
-	# the gutter tears itself down on PREDELETE too, because remove_section() never calls this — but
-	# on the shutdown path it should come out before the editor starts folding up around it
-	if is_instance_valid(diff_gutter):
-		diff_gutter.clean_up()
+	if not is_instance_valid(_git):
+		return
+	# the service outlives this panel (enable_git_panel off, or another consumer holds it), so drop
+	# these connections rather than let it emit into a freed node
+	if _git.status_updated.is_connected(_on_status_updated):
+		_git.status_updated.disconnect(_on_status_updated)
+	if _git.commits_updated.is_connected(_on_commits_updated):
+		_git.commits_updated.disconnect(_on_commits_updated)
+	if _git.repos_updated.is_connected(_on_repos_updated):
+		_git.repos_updated.disconnect(_on_repos_updated)
 
 
-func refresh_repos() -> void:
-	repos = GitUtil.find_repos()
-
+func _on_repos_updated() -> void:
 	repo_option_button.clear()
-	for repo in repos:
+	for repo in _git.repos:
 		var repo_name = MAIN_REPO_TITLE if repo == MAIN_REPO else repo.trim_suffix("/").get_file()
 		repo_option_button.add_item(repo_name)
 		repo_option_button.set_item_metadata(repo_option_button.item_count - 1, repo)
-	
-	if is_instance_valid(diff_gutter):
-		diff_gutter.set_repos(repos)
-	
-	repos_updated.emit()
 
-
-# Points the panel at current_repo: falls back to the main repo if it has gone away, syncs the option
-# button to it, and pulls a fresh status.
-func _apply_current_repo() -> void:
-	if not current_repo in repos:
-		current_repo = MAIN_REPO
-
-	var idx = repos.find(current_repo)
+	var idx = _git.repos.find(_git.current_repo)
 	if idx > -1:
 		repo_option_button.select(idx)
 
-	_clear_lists()
-	refresh_status()
-
 
 func _on_repo_selected(idx:int) -> void:
-	set_repo(repo_option_button.get_item_metadata(idx))
-
-
-func set_repo(repo_dir:String) -> void:
-	if current_repo == repo_dir:
+	var repo_dir = repo_option_button.get_item_metadata(idx)
+	if _git.current_repo == repo_dir:
 		return
-	current_repo = repo_dir
-	status = {}
-	commits = []
-	# a command queued against the old repo must not drain against the new one: its paths are res://
-	# paths under the *old* root, so they would not even resolve here
-	_pending_commands.clear()
-	_clear_lists() # don't leave the old repo's rows up while the new git calls run
-	refresh_status()
+	# don't leave the old repo's rows up while the new repo's git calls run — the branch least of all
+	_clear_lists()
+	_git.set_repo(repo_dir)
 
 
 # Don't leave one repo's rows up while another's data is in flight — the branch least of all, since
@@ -211,21 +173,15 @@ func _clear_lists() -> void:
 	branch_row.tooltip_text = ""
 
 
-func _on_status_updated(repo_dir:String) -> void:
+func _on_status_updated(_repo_dir:String) -> void:
 	_rebuild_change_list()
 	_update_repo_info()
 
-	# a commit is a new baseline for every script open under that repo, and the oid is what says one
-	# happened — a save refreshes this panel without moving HEAD. A shortcut, not the guarantee: the
-	# gutter re-reads a baseline whenever it attaches, which is what actually covers a commit.
-	if is_instance_valid(diff_gutter):
-		diff_gutter.head_moved(repo_dir, get_branch().get(GitUtil.Keys.BRANCH_OID, ""))
 
-
-# Spawns nothing: everything comes out of the status and log already fetched. Reading `commits` here
-# is not a frame behind — _on_status_ready assigns both members before it emits either signal.
+# Spawns nothing: everything comes out of the status and log GitService already fetched. Reading
+# `commits` here is not a frame behind — the service assigns both members before it emits either signal.
 func _update_repo_info() -> void:
-	var info = GitUtil.get_repo_info(status, commits)
+	var info = GitUtil.get_repo_info(_git.status, _git.commits)
 	var branch:Dictionary = info[GitUtil.Keys.BRANCH]
 
 	branch_label.text = GitUtil.get_branch_label(branch)
@@ -249,138 +205,26 @@ func _on_commits_updated(_repo_dir:String) -> void:
 
 func _rebuild_change_list() -> void:
 	change_list.clear_changes()
+	if not is_instance_valid(_git):
+		return
 
-	var files:Dictionary = status.get(GitUtil.Keys.FILES, {})
+	var files:Dictionary = _git.status.get(GitUtil.Keys.FILES, {})
 	var paths = files.keys()
 	paths.sort()
 
 	for path:String in paths:
-		change_list.add_change(path, current_repo, files[path])
+		change_list.add_change(path, _git.current_repo, files[path])
 
 
 func _rebuild_commit_list() -> void:
 	commit_list.clear_commits()
 	# git already returned these newest first — do not sort
-	for commit in commits:
+	for commit in _git.commits:
 		commit_list.add_commit(commit)
 
 
-## The per-file lookup a tree — or the per-file cache in utils_local.gd — will call.
-func get_file_status(file_path:String) -> Dictionary:
-	return status.get(GitUtil.Keys.FILES, {}).get(file_path, {})
-
-
-func get_branch() -> Dictionary:
-	return status.get(GitUtil.Keys.BRANCH, {})
-
-
-## Runs git off the main thread: a cold repo can take long enough to drop frames.
-func refresh_status() -> void:
-	_start_work()
-
-
-## Queues a write for the worker thread, which then re-reads the repo in the same pass. Not run
-## inline: a status that read the repo before an interleaved write would land after it and repaint
-## stale rows, with nothing scheduled to correct them.
-func run_command(command:GitUtil.Command, paths:Array) -> void:
-	if paths.is_empty():
-		return
-
-	# resolved against the status in hand, not on the worker: by the time the thread runs, `status`
-	# may already be the *next* repo's
-	var expanded = GitUtil.expand_paths(command, paths, status.get(GitUtil.Keys.FILES, {}))
-	_pending_commands.append([command, expanded])
-	_start_work()
-
-
-func _start_work() -> void:
-	if is_instance_valid(_thread) and _thread.is_alive():
-		# coalesce rather than pile up threads — re-run once the in flight call lands. Queued commands
-		# keep their place in _pending_commands and go out with that run.
-		_refresh_queued = true
-		return
-
-	_join_thread()
-
-	var queued = _pending_commands
-	_pending_commands = []
-
-	_thread = Thread.new()
-	_thread.start(_status_task.bind(current_repo, queued, _is_initial()))
-
-
-# Whether the repo has no commits yet, which changes how a file is unstaged — see GitUtil.
-func _is_initial() -> bool:
-	return get_branch().get(GitUtil.Keys.BRANCH_INITIAL, false)
-
-
-func _status_task(repo_dir:String, queued:Array, initial:bool) -> void:
-	# the writes go first and the read that follows is therefore never stale with respect to them
-	var errors:Array = []
-	var wrote_worktree = false
-
-	for entry in queued:
-		var command:GitUtil.Command = entry[0]
-		var result = GitUtil.run_command(repo_dir, command, entry[1], initial)
-
-		if result[GitUtil.Keys.EXIT] != 0:
-			errors.append("git %s failed (%s): %s" % [
-				GitUtil.COMMANDS[command][GitUtil.Keys.CMD_LABEL],
-				result[GitUtil.Keys.EXIT],
-				"\n".join(result[GitUtil.Keys.OUTPUT]).strip_edges(),
-			])
-		elif GitUtil.COMMANDS[command][GitUtil.Keys.CMD_WORKTREE]:
-			wrote_worktree = true
-
-	# every git call shares the one thread, so the coalescing and stale-repo guard cover them for free
-	var status_result = GitUtil.get_status(repo_dir)
-	# merged in on the worker thread, so the handoff below keeps its shape and a row click costs no git
-	GitUtil.attach_diffs(repo_dir, status_result)
-	var log_result = GitUtil.get_log(repo_dir)
-	_on_status_ready.call_deferred(repo_dir, status_result, log_result, errors, wrote_worktree)
-
-
-func _on_status_ready(repo_dir:String, status_result:Dictionary, log_result:Array, errors:Array,
-		wrote_worktree:bool) -> void:
-	_join_thread()
-
-	# a failed command otherwise looks exactly like one that worked, because the list simply repaints
-	# the rows it already had
-	for error:String in errors:
-		push_error(error)
-
-	if repo_dir == current_repo: # a repo switch mid flight leaves this result stale
-		status = status_result
-		commits.assign(log_result)
-		status_updated.emit(repo_dir)
-		commits_updated.emit(repo_dir)
-
-	# discard and delete rewrite files behind the editor's back and nothing else will tell it: a script
-	# still open on the old contents would write them straight back on the next save
-	if wrote_worktree:
-		EditorInterface.get_resource_filesystem().scan()
-
-	if _refresh_queued or not _pending_commands.is_empty():
-		_refresh_queued = false
-		_start_work()
-
-
-func _join_thread() -> void:
-	if not is_instance_valid(_thread):
-		return
-	_thread.wait_to_finish()
-	_thread = null
-	
-	# status finished point
-	#print(status)
-
-
 func _on_changes_command(command:GitUtil.Command, paths:Array):
-	run_command(command, paths)
-
-
-func _on_filesystem_changed() -> void:
-	_debounce_timer.start()
+	_git.run_command(command, paths)
 
 
 class Keys:

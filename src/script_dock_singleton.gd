@@ -8,8 +8,8 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 
 const SideBarContainer = preload("res://addons/script_dock/src/sidebar_container.gd")
 const VarInsertContext = preload("res://addons/script_dock/src/editor_plugins/var_insert.gd")
-const GlyphIcons = preload("res://addons/script_dock/src/ui/glyph_icons.gd")
 const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const DiffGutter = preload("res://addons/script_dock/src/git/git_diff_gutter.gd")
 
 const _CACHE_BIN_PATH = "res://.godot/addons/script_dock/script_cache.bin"
 
@@ -56,6 +56,11 @@ var dm_instance_manager:DockManager.InstanceManager
 
 var var_insert_context:VarInsertContext
 
+# owned here, not by the git panel: the on-editor diff marks are independent of enable_git_panel and
+# survive the panel being toggled off. Its data comes from GitService, its eventual home is a
+# standalone line-diff plugin.
+var diff_gutter:DiffGutter
+
 var _script_data_cache:Dictionary = {}
 var right_click_handler:RightClickHandler
 
@@ -68,6 +73,7 @@ func _get_plugin_icon() -> Texture2D:
 func _ready() -> void:
 	FileSystemSingleton.register_node(initial_plugin)
 	EditorGDScriptParser.register_node(initial_plugin)
+	var git_service = GitService.register_node(initial_plugin)
 	#ScriptEditorRef.subscribe()
 	var script_cache = UFile.get_data_bin(_CACHE_BIN_PATH)
 	if script_cache != null:
@@ -77,13 +83,15 @@ func _ready() -> void:
 	
 	right_click_handler = RightClickHandler.new()
 	add_child(right_click_handler)
-	
-	# Baking the status letters costs one rendered frame, so it starts here — the earliest point there
-	# is a tree to render in, and a long way ahead of the first `git status`, which is a process spawn
-	# on a worker thread. Nothing blocks on it: a row built before the bake lands draws its letter as
-	# a string and is rebuilt when GlyphIcons reports in.
-	var glyph_icons = _get_glyph_icons_node()
-	glyph_icons.warm(GitUtil.get_letter_set())
+
+	# gutter setup runs before the sidebar exists, so diff marks work with the git panel off entirely.
+	# GitService drives it: repo set on scan, baselines flushed when a repo's HEAD moves.
+	diff_gutter = DiffGutter.new()
+	add_child(diff_gutter)
+	git_service.repos_updated.connect(_on_git_repos_updated)
+	git_service.status_updated.connect(_on_git_status_updated)
+	# repos_updated already fired during registration, above — sync the current list in
+	diff_gutter.set_repos(git_service.repos)
 
 	var_insert_context = VarInsertContext.new()
 	initial_plugin.add_context_menu_plugin(EditorContextMenuPlugin.CONTEXT_SLOT_SCRIPT_EDITOR_CODE, var_insert_context)
@@ -96,6 +104,20 @@ func _ready() -> void:
 	dm.allow_scene_reload = true
 
 
+# Feeds the diff gutter from GitService (was the git panel's job before the split).
+func _on_git_repos_updated() -> void:
+	if is_instance_valid(diff_gutter):
+		diff_gutter.set_repos(GitService.get_instance().repos)
+
+
+# A commit is a new baseline for every script open under that repo, and the oid is what says one
+# happened — the gutter flushes and re-reads baselines when HEAD moves.
+func _on_git_status_updated(repo_dir:String) -> void:
+	if is_instance_valid(diff_gutter):
+		var branch = GitService.get_instance().get_branch()
+		diff_gutter.head_moved(repo_dir, branch.get(GitUtil.Keys.BRANCH_OID, ""))
+
+
 ## This should be called by the inital plugin that called it before exiting the tree.
 func clean_up() -> void:
 	var plugin = initial_plugin
@@ -106,7 +128,12 @@ func clean_up() -> void:
 	else:
 		FileSystemSingleton.unregister_node(initial_plugin)
 		EditorGDScriptParser.unregister_node(initial_plugin)
-	
+		GitService.unregister_node(initial_plugin)
+
+	# the gutter added gutters into CodeEdits that outlive us — tear those out before we free
+	if is_instance_valid(diff_gutter):
+		diff_gutter.clean_up()
+
 	if is_instance_valid(var_insert_context):
 		plugin.remove_context_menu_plugin(var_insert_context)
 	
@@ -132,18 +159,6 @@ static func add_section(section_id:StringName, control:Control, title:=""):
 static func remove_section(section_id:StringName):
 	var ins = get_instance()
 	ins.sidebar_container.remove_section_by_id(section_id)
-
-static func get_glyph_icons_node():
-	var ins = get_instance()
-	return ins._get_glyph_icons_node()
-
-func _get_glyph_icons_node():
-	var glyph_node = get_node_or_null(NodePath(GlyphIcons.NODE_NAME))
-	if not is_instance_valid(glyph_node):
-		glyph_node = GlyphIcons.new()
-		glyph_node.name = GlyphIcons.NODE_NAME
-		add_child(glyph_node)
-	return glyph_node
 
 static func get_script_data_cache():
 	return get_instance()._script_data_cache

@@ -34,7 +34,7 @@ func _ready() -> void:
 	select_mode = ItemList.SELECT_MULTI
 	allow_rmb_select = true
 	item_clicked.connect(_on_item_clicked)
-	glyph_icons = ScriptDock.get_glyph_icons_node()
+	glyph_icons = GitService.get_glyph_icons_node()
 
 
 func clear_changes() -> void:
