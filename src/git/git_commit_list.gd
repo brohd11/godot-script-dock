@@ -4,25 +4,15 @@ extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
 ##
 ## Rows read:  <dimmed mono hash>  <tag, if any>  <subject>
 ##
-## The row carries **no item text**: every part of it is an overlay segment. That is what lets the
-## hash be mono. ItemList has one font for all of its text, so the only way to make the item text mono
-## is to make the whole *list* mono — and ItemList also takes each row's height from that font, whose
-## mono line box is taller. Doing it that way grew every row and left the list sitting visibly taller
-## than the Changes list beside it, for no gain: the extra height is leading, not ink, so the hash did
-## not even look any bigger for it. As an overlay the hash draws in whatever face it likes and
-## ItemList's layout never hears about it.
-##
-## Every short hash is seven characters, so in a mono face they all come out the same width and the
-## subject column lands on the same x on every row, with no column measuring anywhere. That is the
-## whole reason the hash is mono, and it is why it needs no explicit width.
-##
-## The hash and the tag are fixed width so they never truncate; the subject is the segment that
-## yields. Author and date, which have no room in a sidebar this narrow, live in the tooltip.
+## The row carries no item text: every part is an overlay segment, which is what lets the hash be
+## mono without the whole list being — ItemList has one font for all its text, and takes each row's
+## height from it. Every short hash is seven characters, so a mono face lands the subject on the same
+## x on every row with no column measuring. The subject is the segment that yields; author and date
+## live in the tooltip.
 
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 
-## The mono face, for the hash and the hash alone. A mono subject is what made this read as too heavy
-## back when the face was applied to the whole list.
+# The mono face, for the hash and the hash alone
 var _mono_font:Font
 
 
@@ -31,9 +21,8 @@ func _ready() -> void:
 	_ensure_fonts()
 
 
-## Idempotent and called from add_commit as well as _ready, because a hot reload re-runs neither _init
-## nor _ready on a live instance — it leaves newly declared members unset, and a null font would reach
-## the segment as the list's own face, quietly costing the hash its mono.
+# Idempotent and called from add_commit as well as _ready: a hot reload re-runs neither _init nor
+# _ready on a live instance, and a null font would reach the segment as the list's own face.
 func _ensure_fonts() -> void:
 	if _mono_font != null:
 		return

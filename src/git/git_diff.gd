@@ -1,21 +1,10 @@
-## Two versions of a file, as the hunks git would have printed for them.
+## Two versions of a file, as the hunks git would have printed for them. Spawns nothing and parses
+## nothing git produced — it borrows GitUtil's Keys only so a hunk from here and one from `git diff`
+## are the same shape.
 ##
-## The one part of the git story that has nothing to do with git: it spawns nothing, parses nothing
-## git produced, and would be just as correct on a machine with no git installed. That is why it is
-## not in git_util.gd. It borrows that file's Keys so a hunk from here and a hunk from `git diff` are
-## the same shape — duplicating the constants to shed the dependency would defeat the point.
-##
-## Static, no node references, so it lifts into a_lib alongside git_util.gd.
-##
-## The reason the shapes must match: `attach_diffs` already produces hunks from real patches, and the
-## side-by-side preview will read hunks without caring which of the two made them. Anything here that
-## drifts from parse_patch() is a bug, and tests/git/git_diff_tests.gd asserts it does not.
-##
-## One thing is not drift and is deliberate: the *line model*. git diffs "a\nb\n" as two lines, the
-## final newline being a terminator; to_lines() calls it three, the last one empty, because that is
-## what CodeEdit shows and marking the buffer is the entire job. The keys, the 1-based starts, the
-## zero-count rule and the removals-before-additions ordering are all git's. Only a hunk reaching the
-## end of a file that ends in a newline differs, by the one line of context git does not have.
+## Callers read hunks without caring which of the two made them, so anything here that drifts from
+## parse_patch() is a bug; tests/git/git_diff_tests.gd asserts it does not. One deliberate difference:
+## to_lines() counts a trailing newline as an empty last line, because that is what CodeEdit shows.
 
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 
@@ -23,13 +12,9 @@ const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
 ## git's own default, and what the fixtures in tests/git/ were captured with.
 const CONTEXT = 3
 
-## Past this many edits, stop looking for the minimal diff and say so.
-##
-## Myers is O(ND) in time and, with the trace kept for backtracking, O(D²) in memory — nothing at all
-## for the case this actually runs in (a keystroke, where the prefix/suffix trim leaves D at 1) and
-## ruinous for a file that was rewritten wholesale. Blowing the budget is not answered with a wrong
-## diff but with a coarser true one: everything old removed, everything new added. A gutter cannot
-## draw the difference between that and the minimal edit script anyway.
+## Past this many edits, stop looking for the minimal diff. Myers is O(ND) time and O(D²) memory with
+## the trace kept — nothing for a keystroke, ruinous for a file rewritten wholesale. Blowing the
+## budget yields a coarser true diff (all old removed, all new added), not a wrong one.
 const MAX_EDIT_DISTANCE = 1024
 
 enum _Op {
@@ -39,29 +24,17 @@ enum _Op {
 }
 
 
-## A blob or a buffer, as the array of lines to diff. Both sides must come through here or nothing
-## below means anything.
-##
-## Two traps, and both of them show up as "every line changed":
-##
-## `git show` hands back the raw blob, filters and all — a file committed with CRLF arrives with a
-## \r on the end of every line, where CodeEdit's buffer has none. Normalising the pair is the only
-## thing keeping a CRLF repo from painting whole files yellow.
-##
-## "a\nb\n" splits to ["a", "b", ""]. That trailing empty string is not a wart to trim: it is exactly
-## the empty last line CodeEdit shows for a file ending in a newline, and it is what `text` joins
-## back. Keep it on both sides and it cancels; trim it on one and the last line lies.
+## A blob or a buffer, as the array of lines to diff. Both sides must come through here. Two traps,
+## both showing up as "every line changed": `git show` returns the raw blob, so a CRLF-committed file
+## arrives with a \r per line where CodeEdit's buffer has none; and the trailing "" from "a\nb\n" is
+## the empty last line CodeEdit shows, not a wart — keep it on both sides and it cancels.
 static func to_lines(text:String) -> PackedStringArray:
 	return text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 
 
-## The hunks turning `old_lines` into `new_lines`, in parse_patch()'s shape.
-##
-## NO_NEWLINE is always false, and that is the one place these hunks differ in *meaning* from a
-## parsed patch's. git tracks a missing final newline because it diffs bytes; this diffs an array of
-## lines, and once a text is an array of lines there is no such thing as a newline at the end to
-## miss — to_lines() has already spelled its absence as one fewer empty line, which a hunk then
-## reports as an ordinary added or removed line. Same fact, said in the only vocabulary here.
+## The hunks turning `old_lines` into `new_lines`, in parse_patch()'s shape. NO_NEWLINE is always
+## false: git tracks a missing final newline because it diffs bytes, but to_lines() has already
+## spelled its absence as one fewer empty line, which a hunk reports as an ordinary added/removed line.
 static func diff_lines(old_lines:PackedStringArray, new_lines:PackedStringArray,
 		context:=CONTEXT) -> Array[Dictionary]:
 	if old_lines == new_lines:
@@ -69,12 +42,9 @@ static func diff_lines(old_lines:PackedStringArray, new_lines:PackedStringArray,
 	return _build_hunks(_diff_ops(old_lines, new_lines), old_lines, new_lines, context)
 
 
-## The edit script, one op per line of output, as the ops that turn old into new.
-##
-## The trim is not an optimisation, it is the case this runs in: a keystroke inside a 2000 line
-## script leaves one line differing, and everything Myers is asked to do happens on that one line.
-## The trimmed context comes back as EQUAL ops, because the op list is O(N) either way and a hunk
-## still needs real lines around the change to quote.
+# The ops that turn old into new, one per line of output. The prefix/suffix trim is not an
+# optimisation but the case this runs in: a keystroke in a 2000 line script leaves one line differing.
+# The trimmed context returns as EQUAL ops — the list is O(N) either way and hunks need lines to quote.
 static func _diff_ops(old_lines:PackedStringArray, new_lines:PackedStringArray) -> PackedByteArray:
 	var n = old_lines.size()
 	var m = new_lines.size()
@@ -98,7 +68,7 @@ static func _diff_ops(old_lines:PackedStringArray, new_lines:PackedStringArray) 
 		mid = _fill_ops(_Op.DELETE, mid_old.size())
 	else:
 		# both sides are non empty and differ, so a real edit script is never empty — an empty return
-		# is the budget saying it gave up, and cannot be confused with a legitimate answer
+		# can only be the budget giving up
 		mid = _myers(mid_old, mid_new)
 		if mid.is_empty():
 			mid = _fill_ops(_Op.DELETE, mid_old.size())
@@ -117,10 +87,9 @@ static func _fill_ops(op:_Op, count:int) -> PackedByteArray:
 	return ops
 
 
-## Myers' O(ND) shortest edit script, or an empty array if it would cost more than the budget allows.
-##
-## The lines are interned to ints first: the inner loop is a run of equality tests, and making them
-## int compares rather than String compares costs eight lines and buys a large constant factor.
+# Myers' O(ND) shortest edit script, or empty if it would cost more than MAX_EDIT_DISTANCE allows.
+# The lines are interned to ints first: the inner loop is a run of equality tests, and int compares
+# rather than String compares buy a large constant factor.
 static func _myers(old_lines:PackedStringArray, new_lines:PackedStringArray) -> PackedByteArray:
 	var ids = {}
 	var a = _intern(old_lines, ids)
@@ -175,11 +144,9 @@ static func _intern(lines:PackedStringArray, ids:Dictionary) -> PackedInt32Array
 	return out
 
 
-## The op list, walked back out of the frontier each round left behind.
-##
-## Runs from the end to the start, because that is the direction the trace can be read in — each
-## round's frontier says where the round before it had got to, and nothing says where the next one
-## went. The ops come out reversed and are flipped at the end.
+# The op list, walked back out of the frontier each round left behind. End to start, because that is
+# the direction the trace reads in — each round says where the one before it got to. The ops come out
+# reversed and are flipped at the end.
 static func _backtrack(trace:Array[PackedInt32Array], a:PackedInt32Array, b:PackedInt32Array,
 		d_final:int, offset:int) -> PackedByteArray:
 	var ops = PackedByteArray()
@@ -243,8 +210,8 @@ static func _build_hunks(ops:PackedByteArray, old_lines:PackedStringArray,
 			i += 1
 			continue
 
-		# one hunk swallows the next change along if their context would touch — which is what makes
-		# two edits a line apart one hunk and two edits a page apart two
+		# one hunk swallows the next change along if their context would touch — what makes two edits
+		# a line apart one hunk and two edits a page apart two
 		var first = i
 		var last = i
 		var j = i
@@ -277,10 +244,8 @@ static func _make_hunk(ops:PackedByteArray, old_lines:PackedStringArray,
 			i += 1
 			continue
 
-		# a unified diff writes a change block as every removal and then every addition, whatever
-		# order the edit script found them in — and a run with no context in it is exactly such a
-		# block. Emitting them interleaved would be a patch git never writes, and the shape has to
-		# match parse_patch's or the two are not interchangeable after all.
+		# a unified diff writes a change block as every removal then every addition, whatever order
+		# the edit script found them in. Interleaving them would be a patch git never writes.
 		var dels = []
 		var adds = []
 		while i <= end and ops[i] != _Op.EQUAL:
@@ -296,9 +261,8 @@ static func _make_hunk(ops:PackedByteArray, old_lines:PackedStringArray,
 	var new_count = new_at[end + 1] - new_at[start]
 
 	# git's zero count rule: "@@ -0,0 +1,3 @@" for an insertion into an empty file. When a count is 0
-	# the start names the line *before* the change and not the one at it, because there is no line at
-	# it — and a 0 based cursor is already that number. _parse_hunk_header reads this back, so
-	# breaking it here would break the shape both sides are supposed to share.
+	# the start names the line before the change, there being no line at it — and a 0 based cursor is
+	# already that number.
 	return {
 		GitUtil.Keys.OLD_START: old_at[start] if old_count == 0 else old_at[start] + 1,
 		GitUtil.Keys.OLD_COUNT: old_count,
@@ -310,15 +274,9 @@ static func _make_hunk(ops:PackedByteArray, old_lines:PackedStringArray,
 	}
 
 
-## What a line is, as a mask.
-##
-## A mask because the two things a line can say are independent — a bar for its own content, a wedge
-## for what went missing next to it — and because hunks_to_markers() will resolve hunks from anywhere
-## against any buffer, where nothing guarantees they do not overlap.
-##
-## A diff produced here will not in fact combine them: a removal and an addition that touch are one
-## unbroken block and resolve to a single MODIFIED, so a wedge only ever lands on a context line. The
-## mask costs a byte and does not have to rely on that staying true.
+## What a line is, as a mask: the two things a line can say are independent — a bar for its own
+## content, a wedge for what went missing next to it — and hunks_to_markers() resolves hunks from
+## anywhere against any buffer, where nothing guarantees they do not overlap.
 enum Marker {
 	ADDED         = 1 << 0,
 	MODIFIED      = 1 << 1,
@@ -329,13 +287,8 @@ enum Marker {
 
 
 ## Hunks, resolved to one byte per line of the new text — a lookup a draw callback can do without
-## ever touching a hunk.
-##
-## The same split overlay_item_list.gd makes between _fit_texts and _draw, for the same reason: the
-## paint runs per visible row per frame, and everything here can be decided once instead.
-##
-## Takes hunks, not a diff, so it works just as well on parse_patch()'s — which is the contract test
-## in tests/git/git_diff_tests.gd, and the whole reason the shapes match.
+## touching a hunk, since the paint runs per visible row per frame. Takes hunks and not a diff, so it
+## works on parse_patch()'s too.
 static func hunks_to_markers(hunks:Array, line_count:int) -> PackedByteArray:
 	var markers = PackedByteArray()
 	if line_count <= 0:
@@ -344,9 +297,8 @@ static func hunks_to_markers(hunks:Array, line_count:int) -> PackedByteArray:
 	markers.fill(0)
 
 	for hunk:Dictionary in hunks:
-		# 0 based, because that is what a CodeEdit line is — the off by one everything below turns
-		# on. A zero count hunk's start already names the line before the change, so it needs no
-		# adjusting; every other hunk's names the first line it describes.
+		# 0 based, as a CodeEdit line is. A zero count hunk's start already names the line before the
+		# change and needs no adjusting; every other names the first line it describes.
 		var new_i:int = hunk[GitUtil.Keys.NEW_START]
 		if hunk[GitUtil.Keys.NEW_COUNT] != 0:
 			new_i -= 1
@@ -371,9 +323,8 @@ static func hunks_to_markers(hunks:Array, line_count:int) -> PackedByteArray:
 			new_i += adds
 
 			if adds > 0:
-				# a replacement is one fact and not a removal next to an addition: the reader wants
-				# to know the line changed, and drawing it as a deletion too would say the line
-				# before it lost something, which is not what happened
+				# a replacement is one fact, not a removal next to an addition — marking it as a
+				# deletion too would say the line before it lost something, which it did not
 				var mask = Marker.MODIFIED if dels > 0 else Marker.ADDED
 				for line in range(block, block + adds):
 					_mark(markers, line, mask)
@@ -386,9 +337,8 @@ static func hunks_to_markers(hunks:Array, line_count:int) -> PackedByteArray:
 	return markers
 
 
-## Bounds checked, because the hunks and the line count need not have come from the same place — the
-## contract test feeds git's hunks against a different buffer on purpose, and a real one can arrive
-## a keystroke stale.
+# Bounds checked: the hunks and the line count need not have come from the same place, and a real
+# one can arrive a keystroke stale.
 static func _mark(markers:PackedByteArray, line:int, mask:int) -> void:
 	if line < 0 or line >= markers.size():
 		return

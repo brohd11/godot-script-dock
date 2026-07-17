@@ -51,7 +51,7 @@ var _thread:Thread
 var _refresh_queued:bool = false
 var _debounce_timer:Timer
 
-## commands waiting for the worker thread, as [command, paths] — see run_command()
+# commands waiting for the worker thread, as [command, paths] — see run_command()
 var _pending_commands:Array = []
 
 
@@ -82,15 +82,14 @@ func _ready() -> void:
 	repo_option_button.item_selected.connect(_on_repo_selected)
 	add_child(repo_option_button)
 
-	# The tooltip goes on the row, not on either Label: Label sets its own mouse_filter to IGNORE, so
-	# a tooltip on one would never fire — and that same IGNORE is what lets the mouse fall through to
-	# the row, which is what the tooltip describes anyway.
+	# the tooltip goes on the row, not either Label: Label sets mouse_filter to IGNORE, so a tooltip on
+	# one would never fire — and that same IGNORE lets the mouse fall through to the row
 	branch_row = HBoxContainer.new()
 	branch_row.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(branch_row)
 
-	# the branch name is the one that gives way: an ellipsis eats the end of a string, so leaving the
-	# divergence in here with it would truncate the half worth acting on first
+	# the branch name gives way: an ellipsis eats the end of a string, so a combined label would
+	# truncate the divergence, the half worth acting on
 	branch_label = Label.new()
 	branch_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	branch_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -127,12 +126,8 @@ func _ready() -> void:
 	#await get_tree().process_frame
 	
 	
-	# The status letters are baked textures, and a row picks its texture up at the moment it is built.
-	# The bake is a frame's work and is kicked off at plugin start, so it is all but certain to be
-	# done before the first `git status` returns — but if it is not, or if it is redone because the
-	# editor's font changed, the rows that missed it are still drawing the letter as a string. Rebuild
-	# them and they take the texture.
-	
+	# a row picks its status texture up when it is built, so rows built before the bake landed — or
+	# before a re-bake after the editor's font changed — are still drawing the letter as a string
 	var glyph_icons = ScriptOutline.get_glyph_icons_node()
 	if is_instance_valid(glyph_icons):
 		glyph_icons.generated.connect(_rebuild_change_list)
@@ -174,8 +169,8 @@ func refresh_repos() -> void:
 	repos_updated.emit()
 
 
-## Points the panel at current_repo: falls back to the main repo if it has gone away, syncs the
-## option button to it, and pulls a fresh status.
+# Points the panel at current_repo: falls back to the main repo if it has gone away, syncs the option
+# button to it, and pulls a fresh status.
 func _apply_current_repo() -> void:
 	if not current_repo in repos:
 		current_repo = MAIN_REPO
@@ -205,8 +200,8 @@ func set_repo(repo_dir:String) -> void:
 	refresh_status()
 
 
-## Don't leave one repo's rows on screen while another repo's data is in flight — the branch least of
-## all, since the old one sitting under the new repo's name is a worse lie than showing nothing.
+# Don't leave one repo's rows up while another's data is in flight — the branch least of all, since
+# the old one under the new repo's name is a worse lie than showing nothing.
 func _clear_lists() -> void:
 	change_list.clear_changes()
 	commit_list.clear_commits()
@@ -221,20 +216,14 @@ func _on_status_updated(repo_dir:String) -> void:
 	_update_repo_info()
 
 	# a commit is a new baseline for every script open under that repo, and the oid is what says one
-	# happened — a save refreshes this panel but does not move HEAD, and re-reading every open
-	# script's committed side on every save would spawn git for nothing.
-	#
-	# Only ever speaks for current_repo, because that is the only repo this panel reads. It is a
-	# shortcut, not the guarantee: the gutter re-reads a script's baseline whenever it attaches, and
-	# that is what actually covers a commit — which touches only .git, so it never reaches
-	# filesystem_changed and never lands here on its own anyway.
+	# happened — a save refreshes this panel without moving HEAD. A shortcut, not the guarantee: the
+	# gutter re-reads a baseline whenever it attaches, which is what actually covers a commit.
 	if is_instance_valid(diff_gutter):
 		diff_gutter.head_moved(repo_dir, get_branch().get(GitUtil.Keys.BRANCH_OID, ""))
 
 
-## Spawns nothing: the branch and the counts come out of the status we already have, the commit out of
-## the log fetched on the same worker pass. Reading `commits` here is not a frame behind, because
-## _on_status_ready assigns both members before it emits either signal.
+# Spawns nothing: everything comes out of the status and log already fetched. Reading `commits` here
+# is not a frame behind — _on_status_ready assigns both members before it emits either signal.
 func _update_repo_info() -> void:
 	var info = GitUtil.get_repo_info(status, commits)
 	var branch:Dictionary = info[GitUtil.Keys.BRANCH]
@@ -290,12 +279,9 @@ func refresh_status() -> void:
 	_start_work()
 
 
-## Queues a write for the worker thread, which then re-reads the repo in the same pass.
-##
-## Not run inline: a command on the main thread could interleave with an in-flight `git status`, and
-## a status that read the repo *before* the write would land *after* it and repaint stale rows, with
-## nothing scheduled to correct them. Sharing the one thread makes the write and the re-read
-## unsplittable, and makes the refresh something a caller cannot forget.
+## Queues a write for the worker thread, which then re-reads the repo in the same pass. Not run
+## inline: a status that read the repo before an interleaved write would land after it and repaint
+## stale rows, with nothing scheduled to correct them.
 func run_command(command:GitUtil.Command, paths:Array) -> void:
 	if paths.is_empty():
 		return
@@ -323,7 +309,7 @@ func _start_work() -> void:
 	_thread.start(_status_task.bind(current_repo, queued, _is_initial()))
 
 
-## Whether the repo has no commits yet, which changes how a file is unstaged — see GitUtil.
+# Whether the repo has no commits yet, which changes how a file is unstaged — see GitUtil.
 func _is_initial() -> bool:
 	return get_branch().get(GitUtil.Keys.BRANCH_INITIAL, false)
 
@@ -346,11 +332,9 @@ func _status_task(repo_dir:String, queued:Array, initial:bool) -> void:
 		elif GitUtil.COMMANDS[command][GitUtil.Keys.CMD_WORKTREE]:
 			wrote_worktree = true
 
-	# every git call shares the one thread: the existing coalescing and stale-repo guard then cover
-	# them for free, and a 100 commit log next to a status is a rounding error
+	# every git call shares the one thread, so the coalescing and stale-repo guard cover them for free
 	var status_result = GitUtil.get_status(repo_dir)
-	# two more spawns for the whole worktree's diff, merged into status_result here on the worker
-	# thread — so the handoff below keeps its shape and a row click costs no git call at all
+	# merged in on the worker thread, so the handoff below keeps its shape and a row click costs no git
 	GitUtil.attach_diffs(repo_dir, status_result)
 	var log_result = GitUtil.get_log(repo_dir)
 	_on_status_ready.call_deferred(repo_dir, status_result, log_result, errors, wrote_worktree)
@@ -371,8 +355,8 @@ func _on_status_ready(repo_dir:String, status_result:Dictionary, log_result:Arra
 		status_updated.emit(repo_dir)
 		commits_updated.emit(repo_dir)
 
-	# discard and delete rewrite or remove files behind the editor's back, and nothing else will tell
-	# it: a script still open on the old contents would write them straight back on the next save
+	# discard and delete rewrite files behind the editor's back and nothing else will tell it: a script
+	# still open on the old contents would write them straight back on the next save
 	if wrote_worktree:
 		EditorInterface.get_resource_filesystem().scan()
 

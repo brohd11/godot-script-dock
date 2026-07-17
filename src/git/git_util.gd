@@ -11,29 +11,26 @@ const MAX_DEPTH = 5
 
 const LOG_LIMIT = 100
 
-## The fields of one `git log` record. `%D` is the ref names, which is where the tags come from; it
-## goes last because it is the one field that is empty for most commits, and a trailing empty field
-## still splits to the right size.
+## The fields of one `git log` record. `%D` (ref names, where tags come from) goes last: it is empty
+## for most commits, and a trailing empty field still splits to the right size.
 const LOG_FIELDS:PackedStringArray = ["%h", "%s", "%an", "%ar", "%H", "%D"]
 
 ## How git marks a tag inside `%D`, as opposed to a branch or HEAD.
 const TAG_PREFIX = "tag: "
 
-## `# branch.oid` gives the full 40 character sha, unlike `git log`'s %h. This is git's own default
-## abbreviation, and what a detached HEAD gets displayed as.
+## `# branch.oid` gives the full 40 character sha, unlike `git log`'s %h — this trims it to git's own
+## default abbreviation, which is what a detached HEAD displays as.
 const SHORT_OID = 7
 
-## ASCII unit separator, the field delimiter in the log format below. Safe where NUL was not: it is
-## a valid single byte UTF-8 character, so it survives the Godot String that OS.execute pipes the
-## process output through.
+## ASCII unit separator, the log field delimiter. Safe where NUL was not: it is a valid single byte
+## UTF-8 character, so it survives the Godot String OS.execute pipes its output through.
 const LOG_SEP = "\u001f"
 
-## Never descended into. `.git` holds thousands of object files and none of them are
-## project files; the rest is build noise.
+## Never descended into: `.git` holds thousands of object files, the rest is build noise.
 const PRUNE_DIRS:PackedStringArray = [".git", ".godot", ".import", "node_modules"]
 
-## The v2 line type, which is what tells a conflict from an untracked file from an ordinary edit.
-## v1 forced that distinction out of the XY pair; v2 states it outright.
+## The v2 line type, which tells a conflict from an untracked file from an ordinary edit. v1 forced
+## that out of the XY pair; v2 states it outright.
 enum Kind {
 	ORDINARY,  ## "1"
 	RENAMED,   ## "2", a rename or a copy
@@ -42,8 +39,7 @@ enum Kind {
 	IGNORED,   ## "!"
 }
 
-## One side of the XY pair. v2 writes an unmodified side as ".", which maps to NONE here — the
-## raw character never escapes the parser.
+## One side of the XY pair. v2 writes an unmodified side as ".", which maps to NONE here.
 enum Status {
 	NONE,
 	MODIFIED,
@@ -76,9 +72,7 @@ const STATUS_LABELS = {
 	Status.UNMERGED: "Conflict",
 }
 
-## git's own short-format letters, for when a row is too narrow to spell the word out. "?" for
-## untracked and "U" for a conflict are what `git status -s` prints; the two never collide, and the
-## row colour tells them apart anyway (untracked light green, conflict red).
+## git's own short-format letters, for a row too narrow to spell the word out.
 const STATUS_LETTERS = {
 	Status.MODIFIED: "M",
 	Status.ADDED: "A",
@@ -90,32 +84,26 @@ const STATUS_LETTERS = {
 }
 
 
-## The action a row should display, from an entry of the FILES dict.
-##
-## A display concern, so it is derived here rather than stored on the entry. The worktree side wins
-## when the file is dirty on disk, so a staged-then-edited file reports what is still uncommitted.
+## The action a row should display, from an entry of the FILES dict. The worktree side wins when the
+## file is dirty on disk, so a staged-then-edited file reports what is still uncommitted.
 static func get_status_label(file_data:Dictionary) -> String:
 	return _status_display(file_data, STATUS_LABELS, "Untracked", "Conflict", "Unknown")
 
 
-## The same, abbreviated to git's own single letter — what a row falls back to when the sidebar is
-## too narrow to spell the word out.
+## The same, abbreviated to git's own single letter for a narrow sidebar.
 static func get_status_letter(file_data:Dictionary) -> String:
 	return _status_display(file_data, STATUS_LETTERS, "?", "U", "")
 
 
-## Every character get_status_letter() can return. What a glyph cache has to bake to be able to
-## answer for any file, whatever its status turns out to be.
+## Every character get_status_letter() can return — what a glyph cache has to bake up front.
 static func get_letter_set() -> String:
 	# "?" is the untracked row's letter and is not in the table, which is keyed by Status
 	return "".join(STATUS_LETTERS.values()) + "?"
 
 
-## How many files are in each state, from a get_status() result.
-##
-## STAGED and UNSTAGED are not exclusive — a file with staged hunks and further edits still on disk is
-## both — so these four do not partition TOTAL, and TOTAL is the file count rather than their sum.
-## Untracked and conflicted are line *kinds*, and settle a file outright.
+## How many files are in each state, from a get_status() result. STAGED and UNSTAGED are not
+## exclusive — a file staged and then edited again is both — so they do not partition TOTAL, which is
+## the file count rather than their sum.
 static func count_changes(status:Dictionary) -> Dictionary:
 	var counts = {
 		Keys.COUNT_STAGED: 0,
@@ -145,10 +133,8 @@ static func count_changes(status:Dictionary) -> Dictionary:
 	return counts
 
 
-## What the branch reads as, from a get_status() result's BRANCH dict.
-##
-## A detached HEAD has no name — branch.head reports "(detached)" — so it is named by its oid, which
-## is the whole reason BRANCH_OID is kept.
+## What the branch reads as, from a get_status() result's BRANCH dict. A detached HEAD has no name,
+## so it is named by its oid — the reason BRANCH_OID is kept.
 static func get_branch_label(branch:Dictionary) -> String:
 	if branch.get(Keys.BRANCH_DETACHED, false):
 		var oid:String = branch.get(Keys.BRANCH_OID, "")
@@ -168,11 +154,9 @@ static func get_branch_label(branch:Dictionary) -> String:
 	return "%s → %s" % [name, upstream]
 
 
-## How far the branch has drifted from its upstream: "↑2 ↓1", or "" when in sync or untracked.
-##
-## Kept apart from get_branch_label because the two truncate differently. The label elides in a narrow
-## sidebar and an ellipsis eats the *end* of a string, so a single combined one would lose the
-## ahead/behind first — which is the half worth acting on.
+## How far the branch has drifted from its upstream: "↑2 ↓1", or "" when in sync or untracked. Kept
+## apart from get_branch_label because an ellipsis eats the end of a string, so a combined label
+## would lose the ahead/behind first — the half worth acting on.
 static func get_divergence_label(branch:Dictionary) -> String:
 	var parts:Array[String] = []
 	var ahead:int = branch.get(Keys.BRANCH_AHEAD, 0)
@@ -186,8 +170,7 @@ static func get_divergence_label(branch:Dictionary) -> String:
 	return " ".join(parts)
 
 
-## Everything the panel's repo row shows, gathered from what the last refresh already fetched. Spawns
-## nothing: the branch and the files come out of get_status(), the commit out of get_log().
+## Everything the panel's repo row shows, out of what the last refresh already fetched. Spawns nothing.
 static func get_repo_info(status:Dictionary, commits:Array) -> Dictionary:
 	return {
 		Keys.REPO: status.get(Keys.REPO, ""),
@@ -263,13 +246,12 @@ static func _status_display(file_data:Dictionary, table:Dictionary, untracked:St
 	var index:Status = file_data.get(Keys.INDEX, Status.NONE)
 	return table.get(worktree if worktree != Status.NONE else index, unknown)
 
-## `read_stderr` stays off for the read calls: OS.execute merges stderr into the same output array,
-## and a stray git warning in there would be fed straight to a parser. The write commands turn it on,
-## because git reports *why* it refused on stderr and there is nothing to parse.
+## `read_stderr` stays off for reads: OS.execute merges stderr into the same output array, where a
+## stray git warning would reach the parser. Writes turn it on — git says why it refused there.
 #! keys exit:int output:Array
 static func run_git(repo_dir:String, args:Array, read_stderr:=false) -> Dictionary:
-	# globalized, not project relative: `git -C` resolves a relative path against the editor
-	# process's working directory, which is not the project root
+	# globalized, not project relative: `git -C` resolves against the editor process's working
+	# directory, which is not the project root
 	var final_args:Array = ["-C", ProjectSettings.globalize_path(repo_dir)]
 	final_args.append_array(args)
 
@@ -287,8 +269,8 @@ static func is_repo(dir_path:String) -> bool:
 	return DirAccess.dir_exists_absolute(git_path) or FileAccess.file_exists(git_path)
 
 
-## Every repo under `root`, not just the top level one — this project keeps each addon as its
-## own standalone clone nested inside the project repo.
+## Every repo under `root`, not just the top level one — this project keeps each addon as its own
+## standalone clone nested inside the project repo.
 static func find_repos(root:="res://", max_depth:=MAX_DEPTH) -> Array[String]:
 	var repos:Array[String] = []
 	var queue = [[UFile.ensure_dir_slash(root), 0]]
@@ -315,11 +297,9 @@ static func find_repos(root:="res://", max_depth:=MAX_DEPTH) -> Array[String]:
 	return repos
 
 
-## The repo a path belongs to, out of a find_repos() result: the deepest one that contains it.
-##
-## Deepest and not first, because repos nest — an addon kept as its own clone is not tracked by the
-## project repo around it at all, so the outer repo would answer "no such file in HEAD" for every
-## script inside it. git itself resolves the innermost; so does this.
+## The repo a path belongs to, out of a find_repos() result: the deepest one containing it, as git
+## itself resolves. An addon kept as its own clone is untracked by the project repo around it, which
+## would answer "no such file in HEAD" for every script inside it.
 static func find_repo_for(path:String, repos:Array) -> String:
 	var best = ""
 	for repo:String in repos:
@@ -328,17 +308,11 @@ static func find_repo_for(path:String, repos:Array) -> String:
 	return best
 
 
-## Blocking. Callers that care about the editor's frame rate should run this off the main thread.
+## Blocking — run it off the main thread.
 ##
-## Porcelain v2, not v1: the branch state arrives as four `# branch.*` header lines instead of one
-## line of bracket-and-ellipsis punctuation to unpick, a rename tab-separates its two paths instead
-## of joining them with an ambiguous " -> ", and a conflict is its own line type rather than a pair
-## of letters to look up in a table.
-##
-## Not `-z`: NUL delimited output would be more robust for pathological paths, but OS.execute
-## funnels the pipe through a Godot String, where embedded NULs cannot be relied on. Newline
-## delimited plus core.quotepath=false is the safe trade — git C-quotes the awkward paths and
-## _unquote_path puts them back.
+## Not `-z`: NUL delimited output is more robust for pathological paths, but OS.execute pipes through
+## a Godot String, where embedded NULs cannot be relied on. core.quotepath=false is the safe trade —
+## git C-quotes the awkward paths and _unquote_path puts them back.
 static func get_status(repo_dir:String) -> Dictionary:
 	var result = run_git(repo_dir, [
 		"-c", "core.quotepath=false",
@@ -371,15 +345,11 @@ static func parse_status(text:String, repo_dir:String) -> Dictionary:
 	return status
 
 
-## Blocking, like get_status — run it off the main thread.
+## Blocking — run it off the main thread. Merges hunks into an existing get_status() result.
 ##
 ## Two spawns for the whole worktree, not one per file: `git diff` with no pathspec already emits
-## the patch for every changed file, and splitting it up would only multiply git's ~11ms startup.
-## Merges into an existing get_status() result so the panel's thread keeps its shape.
-##
-## Untracked files get no hunks: `git diff` excludes them by design. Their content is on disk and
-## can just be read. (`git add -N` would pull them into the diff, but it writes to the index, which
-## a passive auto-refreshing panel has no business doing.)
+## every changed file, and splitting it up would only multiply git's ~11ms startup. Untracked files
+## get no hunks — git excludes them by design, and their content can just be read off disk.
 static func attach_diffs(repo_dir:String, status:Dictionary) -> void:
 	var files:Dictionary = status.get(Keys.FILES, {})
 	if files.is_empty():
@@ -412,13 +382,11 @@ static func _merge_patch(repo_dir:String, files:Dictionary, extra_args:Array, hu
 
 
 ## The rev a committed file is read out of. HEAD and not the index: a gutter marking the index would
-## go blank the moment you staged, which is the opposite of what staging means to a reader.
+## go blank the moment you staged.
 const REV_HEAD = "HEAD"
 
-## Whether a committed version of a file could be read, and if not, why not — because the two
-## reasons want opposite things drawn. ABSENT is a file git has no record of, every line of which is
-## genuinely new. ERROR is a repo that would not answer, and the only honest response to that is to
-## draw nothing at all.
+## Whether a committed version of a file could be read, and if not, why not — the two want opposite
+## things drawn. ABSENT means every line is new, so paint them all; ERROR means paint nothing.
 enum Head {
 	OK,
 	ABSENT,
@@ -427,26 +395,17 @@ enum Head {
 
 ## The argv for reading one file out of a rev, split from the spawn so it can be tested.
 ##
-## `<rev>:<path>` is a *tree path*, not a pathspec: git does not glob it, so PATHSPEC_LITERAL has no
-## business here — prefixed, git would go looking for a file actually named ":(literal)src/a.gd".
-## A path not starting with "./" resolves from the top of the tree, which is what to_repo_path gives.
+## `<rev>:<path>` is a tree path, not a pathspec: git does not glob it, so PATHSPEC_LITERAL must not
+## be prefixed here or git looks for a file literally named ":(literal)src/a.gd".
 static func build_show_args(rev:String, repo_dir:String, res_path:String) -> Array:
 	return ["show", "%s:%s" % [rev, to_repo_path(repo_dir, res_path)]]
 
 
-## One file's committed content, as text. Blocking, like get_status — run it off the main thread.
+## One file's committed content, as text. Blocking — run it off the main thread.
 ##
-## The exit code alone cannot classify a failure: `git show` answers 128 both for a path that is not
-## in HEAD and for a directory that is not a repo, and the only thing separating them is a sentence
-## of git's prose in the user's locale. So the failure path asks a question with a yes/no answer
-## instead. The distinction is not pedantry — ABSENT means paint every line green, ERROR means paint
-## nothing, and a machine with no git on PATH would otherwise light up every open script.
-##
-## A repo with no commits has no HEAD, fails, and answers rev-parse — so it falls out as ABSENT with
-## no reference to BRANCH_INITIAL, which is the truth: nothing in it is committed yet.
-##
-## read_stderr stays off, as for every read call: git writes the content to stdout, and a merged
-## warning would be handed to the differ as a line of the file.
+## `git show` answers 128 both for a path not in HEAD and for a directory that is not a repo, with
+## only git's localized prose to separate them, so the failure path re-asks with rev-parse. A repo
+## with no commits falls out as ABSENT, which is the truth: nothing in it is committed yet.
 #! keys head:Head text:String
 static func get_file_at_head(repo_dir:String, res_path:String) -> Dictionary:
 	var result = run_git(repo_dir, build_show_args(REV_HEAD, repo_dir, res_path))
@@ -461,11 +420,10 @@ static func get_file_at_head(repo_dir:String, res_path:String) -> Dictionary:
 	return {Keys.HEAD: Head.ERROR, Keys.TEXT: ""}
 
 
-## Blocking, like get_status — run it off the main thread.
+## Blocking — run it off the main thread. Newest first, in git's own order.
 ##
-## Newest first, in git's own order. `%s` is the subject, i.e. the first line only, so a record can
-## never contain a newline and one output line is exactly one commit. `%ar` is git's own relative
-## date ("2 days ago"), so there is no date maths here.
+## `%s` is the subject, the first line only, so a record can never contain a newline and one output
+## line is exactly one commit. `%ar` is git's own relative date, so there is no date maths here.
 static func get_log(repo_dir:String, limit:=LOG_LIMIT) -> Array[Dictionary]:
 	var result = run_git(repo_dir, [
 		"log",
@@ -504,10 +462,8 @@ static func parse_log(text:String) -> Array[Dictionary]:
 	return commits
 
 
-## The tags out of a `%D` ref field: "HEAD -> main, origin/main, tag: v0.7.2, tag: v0.7.3".
-##
-## Branch and HEAD refs share the field with the tags, so the "tag: " prefix is the only thing that
-## tells them apart — without this filter the Commits list would label every tip commit "main".
+# The tags out of a `%D` ref field: "HEAD -> main, origin/main, tag: v0.7.2, tag: v0.7.3". Branch and
+# HEAD refs share the field, so the "tag: " prefix is the only thing telling them apart.
 static func _parse_refs(field:String) -> Array[String]:
 	var tags:Array[String] = []
 	for ref in field.split(",", false):
@@ -529,8 +485,8 @@ static func _new_branch() -> Dictionary:
 	}
 
 
-## One of the four `# branch.*` headers --branch emits. Each states its field outright, so there is
-## no punctuation to unpick here the way v1's single "## main...origin/main [ahead 1]" line needed.
+# One of the four `# branch.*` headers --branch emits. Each states its field outright, so there is no
+# punctuation to unpick the way v1's single "## main...origin/main [ahead 1]" line needed.
 static func _parse_branch_header(line:String, branch:Dictionary) -> void:
 	var parts = line.split(" ", true, 2)
 	if parts.size() < 3:
@@ -538,9 +494,8 @@ static func _parse_branch_header(line:String, branch:Dictionary) -> void:
 
 	match parts[1]:
 		"branch.oid":
-			# the oid is the *only* thing a detached HEAD can be named by: branch.head reports
-			# "(detached)" and leaves the name empty, so without this there is nothing to show for
-			# precisely the state you most want telling about
+			# the only thing a detached HEAD can be named by — branch.head reports "(detached)"
+			# and leaves the name empty
 			branch[Keys.BRANCH_INITIAL] = parts[2] == "(initial)"
 			if not branch[Keys.BRANCH_INITIAL]:
 				branch[Keys.BRANCH_OID] = parts[2]
@@ -560,10 +515,8 @@ static func _parse_branch_header(line:String, branch:Dictionary) -> void:
 					branch[Keys.BRANCH_BEHIND] = field.substr(1).to_int()
 
 
-## A single tracked / untracked / ignored entry. The leading token is the line type.
-##
-## Every split below is bounded by an explicit maxsplit: a path may contain spaces, so it has to be
-## taken as the whole remainder of the line rather than as one space-delimited field.
+# A single tracked / untracked / ignored entry; the leading token is the line type. Every split is
+# bounded by an explicit maxsplit: a path may contain spaces, so it must take the whole remainder.
 static func _parse_entry(line:String, repo_dir:String, files:Dictionary) -> void:
 	match line.substr(0, 2):
 		"1 ":
@@ -640,14 +593,10 @@ static func parse_patch(text:String, repo_dir:String) -> Dictionary:
 	var file_data = {}
 	var hunk = {}
 
-	# `allow_empty` stays on: an empty context line in a hunk is " ", but a removed empty line is a
-	# bare "-", and dropping empties would silently shift the line counts.
-	#
-	# The one newline that is punctuation rather than content is the last: `git diff` terminates its
-	# output with it, and splitting on it yields a trailing "" that the origin match below reads as
-	# an empty context line — a line the hunk header never counted, appended to the last hunk of the
-	# last file in every patch. Every line inside a hunk carries an origin character, so a genuinely
-	# empty one cannot reach here; trimming exactly one is safe.
+	# `allow_empty` stays on: an empty context line is " " but a removed empty line is a bare "-", and
+	# dropping empties would silently shift the line counts. Only the final newline is punctuation —
+	# git terminates its output with it, and the trailing "" would read as an uncounted context line
+	# on the last hunk. Every line in a hunk carries an origin, so trimming exactly one is safe.
 	for raw_line in text.trim_suffix("\n").split("\n"):
 		var line = raw_line.trim_suffix("\r")
 
@@ -674,8 +623,7 @@ static func parse_patch(text:String, repo_dir:String) -> Dictionary:
 
 		if line.begins_with("Binary files ") or line.begins_with("GIT binary patch"):
 			file_data[Keys.BINARY] = true
-			# a binary file has no +++/--- headers at all, so this is the only chance to learn its
-			# path, and the `diff --git` line is the only place left to read it from
+			# a binary file has no +++/--- headers, so the `diff --git` line is the only path source
 			if res_path.is_empty():
 				res_path = _header_path(repo_dir, header)
 				if not res_path.is_empty():
@@ -708,10 +656,10 @@ static func parse_patch(text:String, repo_dir:String) -> Dictionary:
 	return out
 
 
-## "@@ -<old_start>,<old_count> +<new_start>,<new_count> @@ <heading>"
-##
-## A count is omitted when it is 1, and the trailing heading is the enclosing function git guessed
-## at — it is not diff content and must not be read as a line.
+# "@@ -<old_start>,<old_count> +<new_start>,<new_count> @@ <heading>"
+#
+# A count is omitted when it is 1. The trailing heading is git's guess at the enclosing function —
+# not diff content, and must not be read as a line.
 static func _parse_hunk_header(line:String) -> Dictionary:
 	var hunk = {
 		Keys.OLD_START: 0,
@@ -748,29 +696,20 @@ static func _parse_hunk_header(line:String) -> Dictionary:
 	return hunk
 
 
-## The path out of a `--- a/x` / `+++ b/x` diff header, which is quoted differently to a porcelain
-## path and so cannot go through _to_res_path.
-##
-## Two traps, both of them silent — a mis-read path simply fails to match a status key and the
-## file's hunks vanish:
-##   - git terminates the field with a TAB when the path contains a space ("--- a/with space.txt\t")
-##   - git C-quotes the *whole* field, `a/` prefix included ('--- "a/quo\"te.txt"'), so the tab must
-##     come off and the quoting must come out before the prefix can be stripped
-## Unquoting exactly once also matters: a filename that legitimately begins with a quote would be
-## mangled by a second pass.
+# The path out of a `--- a/x` / `+++ b/x` header, quoted differently to a porcelain path and so not
+# routable through _to_res_path. Two silent traps — a mis-read path just fails to match a status key
+# and the hunks vanish: git TAB-terminates the field when the path has a space, and C-quotes the
+# whole field including the `a/` prefix, so tab and quoting must come off before the prefix.
 static func _patch_path(repo_dir:String, field:String, prefix:String) -> String:
 	return repo_dir.path_join(_unquote_path(field.trim_suffix("\t")).trim_prefix(prefix))
 
 
-## The path out of a `diff --git a/x b/x` line. A last resort, reached only for a binary file, which
-## git gives no +++/--- headers to read.
-##
-## Ambiguous by construction: the two paths are space-joined and unquoted, so `a/one two.txt
-## b/one two.txt` cannot be split by hunting for the space — which is precisely why git emits a +++
-## header for everything else. It is recoverable at all only because the two halves are identical
-## for anything but a rename, so the split can be found by length and then *checked*. Returns ""
-## when that check fails: no hunks is a great deal better than a file's hunks silently attached to
-## the wrong path.
+# The path out of a `diff --git a/x b/x` line. A last resort for binary files, which get no +++/---.
+#
+# Ambiguous by construction: the paths are space-joined and unquoted, so `a/one two.txt b/one two.txt`
+# cannot be split on the space. Recoverable only because the halves are identical for anything but a
+# rename, so the split is found by length and then checked. Returns "" when that check fails — no
+# hunks beats a file's hunks silently attached to the wrong path.
 static func _header_path(repo_dir:String, header:String) -> String:
 	if header.begins_with("\""):
 		var close = _find_closing_quote(header)
@@ -790,8 +729,8 @@ static func _header_path(repo_dir:String, header:String) -> String:
 	return repo_dir.path_join(path)
 
 
-## The index of the closing quote of a C-quoted field, honouring backslash escapes so an escaped
-## quote inside the name does not end it early.
+# The closing quote of a C-quoted field, honouring backslash escapes so an escaped quote inside the
+# name does not end it early.
 static func _find_closing_quote(text:String) -> int:
 	var i = 1
 	while i < text.length():
@@ -803,12 +742,12 @@ static func _find_closing_quote(text:String) -> int:
 
 
 static func _to_res_path(repo_dir:String, rel_path:String) -> String:
-	# porcelain paths are relative to the repo root, so this is what makes the keys mergeable
-	# into the per-file cache in utils_local.gd
+	# porcelain paths are relative to the repo root; this is what makes the keys mergeable into the
+	# per-file cache in utils_local.gd
 	return repo_dir.path_join(_unquote_path(rel_path))
 
 
-## git C-quotes any path with a quote, a backslash or a control character in it.
+# git C-quotes any path with a quote, a backslash or a control character in it.
 static func _unquote_path(path:String) -> String:
 	if not path.begins_with("\""):
 		return path
@@ -850,16 +789,13 @@ static func _unquote_path(path:String) -> String:
 
 #region Commands
 
-## Turns a pathspec into a plain path, killing the glob.
-##
-## git matches a pathspec as a *glob*, so a name containing [ * or ? acts on files that were never
-## named: with ab.txt sitting next to it, `git add -- 'a[bc].txt'` stages both. Survivable for `add`,
-## which can be undone — but DISCARD and DELETE would take the bystander with them, and there is no
-## reflog for work that never reached the index.
+## Turns a pathspec into a plain path, killing the glob. git globs a pathspec, so a name containing
+## [ * or ? acts on files that were never named — and DISCARD or DELETE would take the bystander
+## with them, with no reflog for work that never reached the index.
 const PATHSPEC_LITERAL = ":(literal)"
 
-## What a file *is*, as a mask, so a command can state the states it accepts as data. Applicability
-## has to be data and not a predicate: a const Dictionary cannot hold a function reference.
+## What a file is, as a mask, so a command can state the states it accepts as data — a const
+## Dictionary cannot hold a function reference.
 enum State {
 	STAGED     = 1 << 0,
 	UNSTAGED   = 1 << 1,
@@ -874,11 +810,9 @@ enum Command {
 	DELETE,
 }
 
-## Staging a conflicted file is how git marks it resolved, which is why STAGE accepts CONFLICTED.
-## Picking a side (`--ours` / `--theirs`) is a different job and is not here.
-##
-## DISCARD takes UNSTAGED and not UNTRACKED because `git restore` does not touch a file git has never
-## seen — removing one of those is DELETE, a different command with a different blast radius.
+## STAGE accepts CONFLICTED because staging is how git marks a conflict resolved. DISCARD takes
+## UNSTAGED and not UNTRACKED: `git restore` does not touch a file git has never seen, and removing
+## one of those is DELETE, with a different blast radius.
 const COMMANDS = {
 	Command.STAGE: {
 		Keys.CMD_LABEL: "Stage",
@@ -910,16 +844,14 @@ const COMMANDS = {
 	},
 }
 
-## The unstage that works on a repo with no commits. `git restore --staged` restores the index *from
-## HEAD*, and an initial repo has no HEAD to restore from — it dies with "could not resolve HEAD".
+## The unstage that works on a repo with no commits. `git restore --staged` restores the index from
+## HEAD, which an initial repo has none of — it dies with "could not resolve HEAD".
 const ARGS_UNSTAGE_INITIAL:Array = ["rm", "--cached"]
 
 
-## Which of State's bits a file has raised, from an entry of the FILES dict.
-##
-## The line kind settles untracked and conflicted outright, before the staged/unstaged pair is read —
-## as in _status_display() and count_changes(). Not an optimisation: an untracked entry is built with
-## a ".." XY pair, so it has *neither* flag set and the kind is the only thing that classifies it.
+## Which of State's bits a file has raised, from an entry of the FILES dict. The kind settles
+## untracked and conflicted before the staged/unstaged pair is read — not an optimisation: an
+## untracked entry has a ".." XY pair, so neither flag is set and only the kind classifies it.
 static func get_file_state(file_data:Dictionary) -> int:
 	match file_data.get(Keys.KIND, Kind.ORDINARY):
 		Kind.UNTRACKED:
@@ -940,12 +872,9 @@ static func command_accepts(command:Command, file_data:Dictionary) -> bool:
 	return get_file_state(file_data) & int(COMMANDS[command][Keys.CMD_ACCEPTS]) != 0
 
 
-## The paths a command must actually be handed, which is not always the ones that were selected.
-##
-## A rename is a delete of the old path plus an add of the new, and the status entry keys on the
-## *new* one. Unstage only that and git leaves the deletion of the old path staged: "D old.txt" plus
-## an untracked "new.txt" — a half-unstaged rename, worse than either end of it. RENAMED_FROM is
-## already parsed; this is what it is for.
+## The paths a command must be handed, which is not always the ones selected. A rename is a delete of
+## the old path plus an add of the new, keyed on the new one — unstage only that and git leaves the
+## old path's deletion staged, a half-unstaged rename worse than either end of it.
 static func expand_paths(command:Command, paths:Array, files:Dictionary) -> Array:
 	if command != Command.UNSTAGE:
 		return paths.duplicate()
@@ -962,12 +891,9 @@ static func expand_paths(command:Command, paths:Array, files:Dictionary) -> Arra
 	return out
 
 
-## A res:// path as git sees it: relative to the repo root, which is what run_git's `-C` already
-## resolves against. The exact inverse of _to_res_path().
-##
-## Assumes `path` is under `repo_dir` — trim_prefix hands back a path that is still res:// if it is
-## not, and git would then be asked about a file that cannot exist. find_repo_for() is what picks a
-## repo that makes this true.
+## A res:// path as git sees it: relative to the repo root, which run_git's `-C` resolves against.
+## The inverse of _to_res_path(). Assumes `path` is under `repo_dir` — find_repo_for() is what makes
+## that true; otherwise trim_prefix returns a res:// path and git is asked about a file that cannot exist.
 static func to_repo_path(repo_dir:String, path:String) -> String:
 	return path.trim_prefix(repo_dir)
 
@@ -991,8 +917,8 @@ static func build_command_args(command:Command, repo_dir:String, paths:Array, in
 	return args
 
 
-## Blocking, like get_status — the panel runs it on the same worker thread, which is also what keeps
-## a mutation from interleaving with the status read that follows it.
+## Blocking — the panel runs it on the same worker thread as get_status, which keeps a mutation from
+## interleaving with the status read that follows it.
 ##
 ## `initial` is the repo-has-no-commits flag from BRANCH_INITIAL. Returns run_git's {exit, output};
 ## a non-zero exit is the caller's to surface.

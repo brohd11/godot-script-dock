@@ -2,12 +2,10 @@ extends SplitContainer
 
 ## A collapsible sidebar section.
 ##
-## Sections form a nested chain: slot 0 holds this section's header + content,
-## slot 1 holds the next SectionSplit. Each section therefore owns exactly one
-## dragger — the boundary between itself and everything below it — which is what
-## lets a collapsed section freeze its own dragger without touching the others.
-## The 4.6 multi child SplitContainer cannot do this: its `dragging_enabled`,
-## `collapsed` and `dragger_visibility` are container wide.
+## Sections form a nested chain: slot 0 holds this section's header + content, slot 1 holds the next
+## SectionSplit. Each therefore owns exactly one dragger — the boundary below it — so a collapsed
+## section can freeze its own without touching the others. The 4.6 multi child SplitContainer cannot:
+## its `dragging_enabled`, `collapsed` and `dragger_visibility` are container wide.
 ##
 ## Never parent a third visible Control here, it becomes a third split slot.
 
@@ -32,11 +30,9 @@ var option_hbox:HBoxContainer
 var content_margin:MarginContainer
 
 
-## The split position the user actually dragged to.
-## `split_offset` cannot be used as storage: while `collapsed` is false the engine
-## clamps it against the children's minimum sizes and writes the clamped value
-## back, which happens whenever a neighbour is collapsed and on every reparent
-## (the control's size is momentarily zero).
+## The split position the user actually dragged to. `split_offset` cannot store it: while `collapsed`
+## is false the engine clamps it against the children's minimum sizes and writes the clamped value
+## back, which happens whenever a neighbour collapses and on every reparent.
 var offset_pref:int = 0
 
 var collapsed_state:bool = false:
@@ -58,8 +54,8 @@ func _init(section_id:StringName, title:String) -> void:
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dragged.connect(_on_dragged)
 
-	# the header lives inside the margin, so a negative margin pulls the section's
-	# minimum height below the header button's own height and the collapsed row sits tight
+	# the header lives inside the margin, so a negative margin pulls the section's minimum height
+	# below the header button's own and the collapsed row sits tight
 	main_vbox = VBoxContainer.new()
 	main_vbox.add_theme_constant_override("separation", 0)
 	UControl.expand(main_vbox)
@@ -151,15 +147,10 @@ func toggle() -> void:
 	collapsed_state = not collapsed_state
 
 
-## Applies the layout rule for this section's place in the chain.
-## `expanded_below` is true when any section deeper in the chain is expanded.
-##
-## Collapsed section with something expanded below: slot 0 does not expand, so it
-## gets exactly its minimum (the header) and the rest of the chain takes the
-## remainder — the freed space flows down. Expanded section with everything below
-## collapsed: slot 1's minimum is the stack of headers beneath it, so slot 0 takes
-## the remainder — the freed space flows up. Everything collapsed: the section's own
-## SHRINK_BEGIN propagates up the chain and the headers stack at the top.
+## Applies the layout rule for this section's place in the chain; `expanded_below` is true when any
+## deeper section is expanded. Collapsed with something expanded below, slot 0 takes only its minimum
+## and the freed space flows down; expanded with everything below collapsed, slot 1's minimum is the
+## header stack and the space flows up; all collapsed, SHRINK_BEGIN stacks the headers at the top.
 func apply_layout_state(expanded_below:bool) -> void:
 	var expanded := not collapsed_state
 
@@ -170,9 +161,8 @@ func apply_layout_state(expanded_below:bool) -> void:
 	var draggable := expanded and expanded_below
 	dragging_enabled = draggable
 	collapsed = not draggable # engine property, freezes the layout and the offset writeback
-	# DRAGGER_HIDDEN still reserves the separation, it just stops drawing the grabber — that
-	# is what keeps a visible gap between stacked collapsed headers. DRAGGER_HIDDEN_COLLAPSED
-	# is the one value _get_separation() zeroes, which would leave them flush against each other
+	# DRAGGER_HIDDEN still reserves the separation, keeping a gap between stacked collapsed headers.
+	# DRAGGER_HIDDEN_COLLAPSED is the value _get_separation() zeroes, leaving them flush
 	dragger_visibility = DRAGGER_VISIBLE if draggable else DRAGGER_HIDDEN
 	
 	content_margin.visible = expanded
@@ -193,8 +183,8 @@ func _update_fold_icon() -> void:
 
 func _apply_header_theme() -> void:
 	var editor_theme = EditorInterface.get_editor_theme()
-	# read the variation from the theme rather than the button, so this stays
-	# idempotent once the override below is in place
+	# read the variation from the theme rather than the button, so this stays idempotent once the
+	# override below is in place
 	var flat = editor_theme.get_stylebox("normal", &"FlatButton")
 	var sb = editor_theme.get_stylebox("normal", &"Button").duplicate() as StyleBoxFlat
 	sb.content_margin_top = flat.content_margin_top

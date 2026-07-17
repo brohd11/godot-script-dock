@@ -1,30 +1,18 @@
 extends Node
 
-## Rasterizes single characters into square textures, so a glyph can be positioned as a square
-## rather than as a string.
+## Rasterizes single characters into square textures, so a glyph can be positioned as a square rather
+## than as a string. A string is placed by its advance width, which differs per glyph, and there is no
+## way to ask draw_string to centre a glyph on its ink — baked into a square, every letter draws at
+## one x on every row. It is also the only way to put a letter on a Tree, which takes a Texture2D.
 ##
-## A string is placed by its advance width, which differs per glyph: right align "M" and "T" on
-## consecutive rows and the two letters do not share a column, because the wider one starts further
-## left. There is no way to ask draw_string to centre a glyph on its *ink* instead. Baking the glyph
-## into a square, centred on the ink at bake time, moves that problem out of the draw path: every
-## letter is then the same fixed-size square, and drawing it at one x on every row is all it takes.
+## The textures are white; colour is the caller's draw-time modulate, so the cache holds one texture
+## per character rather than one per character per colour.
 ##
-## It is also the only way to put a letter on a Tree, which cannot draw arbitrary text per cell but
-## takes a Texture2D happily (set_icon / add_button).
-##
-## The textures are white; colour is the caller's, applied as the draw-time modulate. So the cache
-## holds one texture per character, not one per character per colour.
-##
-## Rasterizing goes through a SubViewport rather than through the TextServer glyph atlas
-## (font_get_glyph_uv_rect + font_get_texture_image). The atlas is synchronous, which is tempting,
-## but its pixels are only pixels when the font is an ordinary bitmap-cached one — an MSDF face
-## stores a distance field there instead, and a FontVariation or a fallback puts the glyph under a
-## RID that is not the one you asked about. The editor's font can be any of those, depending on
-## settings we do not control. Drawing through a viewport *is* the real draw path, so whatever the
-## font renderer does is what lands in the image. Image.get_used_rect() then hands back the exact
-## ink box, which is what the centring wants and which no font metric gives directly.
-##
-## The cost of that is one rendered frame, once, for the whole character set — see warm().
+## Rasterizing goes through a SubViewport, not the TextServer glyph atlas: the atlas holds real pixels
+## only for an ordinary bitmap-cached font, where an MSDF face stores a distance field and a
+## FontVariation or fallback files the glyph under a different RID. The editor's font may be any of
+## those. A viewport is the real draw path, and Image.get_used_rect() then gives the exact ink box.
+## The cost is one rendered frame, once, for the whole set — see warm().
 
 const NODE_NAME = &"GlyphIcons"
 
@@ -33,23 +21,21 @@ const PAD = 1
 ## unscaled px the square will not go below, so a narrow set of glyphs still yields a usable icon
 const MIN_SIDE = 12
 
-## character (String) -> ImageTexture, white on transparent, ink centred
+# character (String) -> ImageTexture, white on transparent, ink centred
 var _cache:Dictionary = {}
-## the square's side in px, shared by every texture in _cache
+# the square's side in px, shared by every texture in _cache
 var _side:int = 0
 
 signal generated
 
-## what _cache was baked against; a mismatch means the editor's font or scale moved under us
+# what _cache was baked against; a mismatch means the editor's font or scale moved under us
 var _key:String = ""
 var _chars:String = ""
 var _warming:bool = false
 
-## The cached texture for a character, or null if the cache has not been baked yet.
-##
-## Null is a normal return, not an error: warm() takes a frame, and a caller that lands inside it
-## should fall back to drawing the character as a string. Connect to `generated` to pick the texture
-## up once it exists.
+## The cached texture for a character, or null if the cache has not been baked yet. Null is a normal
+## return: warm() takes a frame, and a caller landing inside it should draw the character as a string.
+## Connect to `generated` to pick the texture up once it exists.
 func get_letter(letter:String) -> Texture2D:
 	return _cache.get(letter)
 
@@ -61,12 +47,9 @@ func _ready() -> void:
 	# font size and editor scale both live in the editor settings, and both change the square
 	EditorInterface.get_editor_settings().settings_changed.connect(_on_editor_settings_changed)
 
-## Bake `chars` into the cache. Costs one rendered frame, for the whole set at once.
-##
-## Call it as early as there is a tree to sit in — the point is to be finished long before anything
-## asks for a letter. Nothing depends on that race being won, though: until this lands, get_letter()
-## returns null and callers draw the character as a string, which is what they did before textures
-## existed at all.
+## Bake `chars` into the cache. Costs one rendered frame, for the whole set at once. Call it as early
+## as there is a tree to sit in, though nothing depends on winning that race — until it lands,
+## get_letter() returns null and callers fall back to drawing the character as a string.
 func warm(chars:String) -> void:
 	if _warming or chars.is_empty():
 		return
@@ -94,10 +77,9 @@ func warm(chars:String) -> void:
 	generated.emit()
 
 
-## Draw the whole set into one viewport, one glyph per cell, then cut it up. One pass, one frame.
-##
-## Where each glyph lands inside its cell does not matter — the ink box is recovered from the pixels
-## afterwards, so the draw only has to be somewhere clear of the cell's edges.
+# Draw the whole set into one viewport, one glyph per cell, then cut it up. One pass, one frame.
+# Where each glyph lands in its cell does not matter — the ink box is recovered from the pixels
+# afterwards, so the draw only has to be clear of the cell's edges.
 func _rasterize(chars:String, font:Font, font_size:int) -> Dictionary:
 	var cell = int(ceil(font.get_height(font_size) * 2.0))
 	if cell <= 0:
@@ -151,10 +133,9 @@ func _rasterize(chars:String, font:Font, font_size:int) -> Dictionary:
 	side += int(2 * PAD * scale)
 	side = maxi(side, int(MIN_SIDE * scale))
 
-	# 2. centre each ink box in a square of that one side. Centring vertically on the ink rather than
-	# sitting the glyph on a baseline is right for a set that is all cap height (the git letters, plus
-	# "?"): with no descenders the two agree, and the ink is the thing the eye lines up. Feed this a
-	# lowercase or a descender and it would need to become baseline relative.
+	# 2. centre each ink box in a square of that one side. Centring on the ink rather than a baseline
+	# only holds for an all-cap-height set (the git letters, plus "?"); feed it a descender and it
+	# would have to become baseline relative.
 	var textures := {}
 	for i in count:
 		var ink:Rect2i = inks[i]
@@ -173,10 +154,9 @@ func _rasterize(chars:String, font:Font, font_size:int) -> Dictionary:
 	return {&"textures": textures, &"side": side}
 
 
-## The viewport composites onto a transparent background, which leaves the antialiased edge of the
-## glyph carrying the background's colour as well as its own — a dark fringe once the texture is
-## modulated to a light colour. Flattening RGB to white and keeping only the alpha is what removes
-## it, the same way UTexture.get_modulated_icon recolours an icon without touching its edges.
+# The viewport composites onto a transparent background, leaving the glyph's antialiased edge
+# carrying the background's colour — a dark fringe once modulated to a light colour. Flattening RGB
+# to white and keeping only the alpha removes it.
 func _force_white(image:Image) -> void:
 	for y in image.get_height():
 		for x in image.get_width():

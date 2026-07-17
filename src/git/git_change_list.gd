@@ -4,14 +4,10 @@ extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
 ##
 ## Rows read:  <file name>  <dimmed dir> ………………… <status>
 ##
-## The dir is the segment that yields, so a deep path shortens rather than crowding the file name.
-## Below COMPACT_BELOW the status word drops to git's own single letter, which hands its width back
-## to the name — the whole point of the fallback, since "Untracked" is wider than most file names.
-##
-## That letter is drawn from a baked square rather than as a string, so that the letters line up
-## with one another down the list — see glyph_icons.gd. Until the cache is warm GlyphIcons hands back
-## null and the segment falls through to its `compact` string, which is what the list drew before the
-## textures existed; nothing here has to wait on the bake.
+## The dir yields, so a deep path shortens rather than crowding the file name. Below COMPACT_BELOW the
+## status word drops to git's single letter, handing its width back to the name. That letter is a
+## baked square rather than a string so the letters line up down the list (see glyph_icons.gd); until
+## the cache is warm GlyphIcons returns null and the segment falls through to its `compact` string.
 
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
@@ -25,8 +21,8 @@ const COMPACT_BELOW = 200.0
 
 var glyph_icons:GlyphIcons
 
-## res:// path -> the status entry that built its row. The menu needs it: what a command can be asked
-## to do to a file is decided by what state that file is in, and the row alone does not say.
+# res:// path -> the status entry that built its row. The menu needs it: what a command can do to a
+# file depends on its state, which the row alone does not say.
 var _file_data:Dictionary = {}
 
 signal changes_command(command:GitUtil.Command, paths:Array)
@@ -128,11 +124,9 @@ func _on_item_right_clicked():
 	ScriptOutline.get_right_click_handler().display_popup(options)
 
 
-## One entry per command that has something to do to the selection.
-##
-## A command is handed only the subset of the selection it accepts, not the whole thing: staging a
-## mixed selection should stage what can be staged rather than fail on the rest. A command no
-## selected file accepts is not offered at all — no "Unstage" over an untracked file.
+# One entry per command that has something to do to the selection. A command is handed only the
+# subset it accepts — staging a mixed selection stages what it can rather than failing on the rest —
+# and a command no selected file accepts is not offered at all.
 func _add_command_options(options:Options, selected_paths:Array) -> void:
 	var separated = false
 
@@ -145,8 +139,7 @@ func _add_command_options(options:Options, selected_paths:Array) -> void:
 		if paths.is_empty():
 			continue
 
-		# the destructive pair is unrecoverable and one click away, so at least keep it away from the
-		# ones that are not. Commenting out this add_option is all it takes to drop them entirely.
+		# the destructive pair is unrecoverable and one click away, so keep it apart from the rest
 		if entry[GitUtil.Keys.CMD_DESTRUCTIVE] and not separated:
 			options.add_separator()
 			separated = true
@@ -155,8 +148,8 @@ func _add_command_options(options:Options, selected_paths:Array) -> void:
 			_changes_command.bind(command, paths))
 
 
-## Says so when a command is about to act on fewer files than are selected — otherwise "Unstage" over
-## five rows of which two are staged gives no hint that the other three are being left alone.
+# Says so when a command will act on fewer files than are selected — otherwise "Unstage" over five
+# rows of which two are staged gives no hint the other three are left alone.
 func _command_label(entry:Dictionary, paths:Array, selected_paths:Array) -> String:
 	var label:String = entry[GitUtil.Keys.CMD_LABEL]
 	if paths.size() == selected_paths.size():
