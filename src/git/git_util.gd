@@ -3,7 +3,7 @@
 ## Deliberately standalone — static, no node references, no panel coupling — so it can be
 ## lifted into a_lib whole once it settles.
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const UFile = UtilsRemote.UFile
 

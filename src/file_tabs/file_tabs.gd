@@ -1,6 +1,6 @@
 extends MarginContainer
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
@@ -20,9 +20,9 @@ const SLKeys = ScriptListManager.Keys
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
-const ScriptList = preload("res://addons/script_outline/src/file_tabs/script_list.gd")
-const ScriptTree = preload("res://addons/script_outline/src/file_tabs/script_tree.gd")
-const ScriptCollection = preload("res://addons/script_outline/src/file_tabs/script_collection.gd")
+const ScriptList = preload("res://addons/script_dock/src/file_tabs/script_list.gd")
+const ScriptTree = preload("res://addons/script_dock/src/file_tabs/script_tree.gd")
+const ScriptCollection = preload("res://addons/script_dock/src/file_tabs/script_collection.gd")
 
 enum TitleMode {
 	TITLES,
@@ -66,7 +66,7 @@ func set_dock_data(data:Dictionary) -> void:
 
 
 func _ready() -> void:
-	_script_data_cache = ScriptOutline.get_script_data_cache()
+	_script_data_cache = ScriptDock.get_script_data_cache()
 	_build_nodes()
 	_tab_icon = EditorIcons.get_icon_white("TabBar")
 	
@@ -164,7 +164,7 @@ func _on_tab_rmb_clicked(tab:int):
 	if control.has_method(&"get_options"):
 		options.merge(control.get_options())
 	
-	ScriptOutline.get_right_click_handler().display_popup(options)
+	ScriptDock.get_right_click_handler().display_popup(options)
 
 
 func _on_tab_rename(tab:int):
@@ -393,10 +393,10 @@ class Keys:
 	const TAB_TYPE = &"tab_type"
 	
 	
-	const CONTAINER_TABS_PATH = &"user://addons/script_outline/container_tabs.json"
+	const CONTAINER_TABS_PATH = &"user://addons/script_dock/container_tabs.json"
 
 class EditorSet:
-	const DEFAULT_TAB_ICONS = &"plugin/script_outline/tab_icons"
+	const DEFAULT_TAB_ICONS = &"plugin/script_dock/tab_icons"
 	
 	const DEFAULT_TAB_ICONS_PROP_INFO = {
 		

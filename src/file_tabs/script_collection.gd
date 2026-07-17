@@ -1,9 +1,9 @@
 extends VBoxContainer
 
-const Self = preload("res://addons/script_outline/src/file_tabs/script_collection.gd")
+const Self = preload("res://addons/script_dock/src/file_tabs/script_collection.gd")
 
-const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
@@ -26,7 +26,7 @@ const ItemKeys = FSTree.ItemKeys
 
 
 const COL_MANAGER_NAME = &"script_outline"
-var col_storage_dir:String = "res://.addons/script_outline/collections/"
+var col_storage_dir:String = "res://.addons/script_dock/collections/"
 
 var filesystem_singleton:FileSystemSingleton
 var script_list_manager:ScriptListManager
@@ -212,7 +212,7 @@ func _try_save_collection():
 		man.save_collection(current_collection)
 
 func _get_col_manager() -> CollectionManager:
-	col_storage_dir = "res://.addons/script_outline/collections/"
+	col_storage_dir = "res://.addons/script_dock/collections/"
 	return CollectionSingleton.get_named_manager({
 		&"manager_name": COL_MANAGER_NAME,
 		&"storage_dir": col_storage_dir
@@ -328,7 +328,7 @@ func _custom_right_click():
 		options.add_separator()
 		options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
 	
-	ScriptOutline.get_right_click_handler().display_popup(options)
+	ScriptDock.get_right_click_handler().display_popup(options)
 
 
 func _open_or_activate_path(path:String, right_click:=false, click_pos:=Vector2()):

@@ -6,16 +6,16 @@ extends VBoxContainer
 ## calls run off the main thread and are published through `status_updated` / `commits_updated`,
 ## which drive the Changes and Commits lists.
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 const UControl = UtilsRemote.UControl
 const TabBarContainer = UtilsRemote.TabBarContainer
 
-const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
+const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
-const DiffGutter = preload("res://addons/script_outline/src/git/git_diff_gutter.gd")
-const GitChangeList = preload("res://addons/script_outline/src/git/git_change_list.gd")
-const GitCommitList = preload("res://addons/script_outline/src/git/git_commit_list.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const DiffGutter = preload("res://addons/script_dock/src/git/git_diff_gutter.gd")
+const GitChangeList = preload("res://addons/script_dock/src/git/git_change_list.gd")
+const GitCommitList = preload("res://addons/script_dock/src/git/git_commit_list.gd")
 
 const MAIN_REPO = "res://"
 const MAIN_REPO_TITLE = "Project"
@@ -128,7 +128,7 @@ func _ready() -> void:
 	
 	# a row picks its status texture up when it is built, so rows built before the bake landed — or
 	# before a re-bake after the editor's font changed — are still drawing the letter as a string
-	var glyph_icons = ScriptOutline.get_glyph_icons_node()
+	var glyph_icons = ScriptDock.get_glyph_icons_node()
 	if is_instance_valid(glyph_icons):
 		glyph_icons.generated.connect(_rebuild_change_list)
 	

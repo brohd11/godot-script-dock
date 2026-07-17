@@ -9,7 +9,7 @@ extends SplitContainer
 ##
 ## Never parent a third visible Control here, it becomes a third split slot.
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const UControl = UtilsRemote.UControl
 const EditorColors = UtilsRemote.EditorColors

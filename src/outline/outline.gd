@@ -3,7 +3,7 @@ extends MarginContainer
 const PLUGIN_EXPORTED = false
 const PRINT_DEBUG = PLUGIN_EXPORTED and false
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 const VarInsertType = UtilsRemote.VarInsertType
@@ -1838,4 +1838,4 @@ class OutlineKeys:
 	
 
 class EditorSet:
-	const FOLLOW_CURSOR = &"plugin/script_outline/follow_cursor"
+	const FOLLOW_CURSOR = &"plugin/script_dock/follow_cursor"

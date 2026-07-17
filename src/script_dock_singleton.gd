@@ -1,25 +1,25 @@
-class_name ScriptOutline
+class_name ScriptDock
 extends SingletonRefCount
 const SingletonRefCount = Singletons.RefCount
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 const EditorGDScriptParser = UtilsRemote.EditorGDScriptParser
 const RightClickHandler = UtilsRemote.RightClickHandler
 
-const SideBarContainer = preload("res://addons/script_outline/src/sidebar_container.gd")
-const VarInsertContext = preload("res://addons/script_outline/src/editor_plugins/var_insert.gd")
-const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
+const SideBarContainer = preload("res://addons/script_dock/src/sidebar_container.gd")
+const VarInsertContext = preload("res://addons/script_dock/src/editor_plugins/var_insert.gd")
+const GlyphIcons = preload("res://addons/script_dock/src/ui/glyph_icons.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
 
-const _CACHE_BIN_PATH = "res://.godot/addons/script_outline/script_cache.bin"
+const _CACHE_BIN_PATH = "res://.godot/addons/script_dock/script_cache.bin"
 
 
 #region SingletonAPI
 
-const PE_STRIP_CAST_SCRIPT = preload("res://addons/script_outline/src/script_outline_singleton.gd")
+const PE_STRIP_CAST_SCRIPT = preload("res://addons/script_dock/src/script_dock_singleton.gd")
 
 static func get_singleton_name() -> String:
-	return "ScriptOutlineSingleton"
+	return "ScriptDockSingleton"
 
 static func get_instance() -> PE_STRIP_CAST_SCRIPT:
 	return _get_instance(PE_STRIP_CAST_SCRIPT)

@@ -1,4 +1,4 @@
-extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
+extends "res://addons/script_dock/src/ui/overlay_item_list.gd"
 
 ## The Git section's Changes list.
 ##
@@ -13,8 +13,8 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
 
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
-const GlyphIcons = preload("res://addons/script_outline/src/ui/glyph_icons.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const GlyphIcons = preload("res://addons/script_dock/src/ui/glyph_icons.gd")
 
 ## unscaled px of list width below which the status word gives way to its letter
 const COMPACT_BELOW = 200.0
@@ -34,7 +34,7 @@ func _ready() -> void:
 	select_mode = ItemList.SELECT_MULTI
 	allow_rmb_select = true
 	item_clicked.connect(_on_item_clicked)
-	glyph_icons = ScriptOutline.get_glyph_icons_node()
+	glyph_icons = ScriptDock.get_glyph_icons_node()
 
 
 func clear_changes() -> void:
@@ -121,7 +121,7 @@ func _on_item_right_clicked():
 
 	_add_command_options(options, selected_paths)
 
-	ScriptOutline.get_right_click_handler().display_popup(options)
+	ScriptDock.get_right_click_handler().display_popup(options)
 
 
 # One entry per command that has something to do to the selection. A command is handed only the

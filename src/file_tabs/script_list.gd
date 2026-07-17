@@ -1,6 +1,6 @@
 extends VBoxContainer
 
-const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
+const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const SLKeys = ScriptListManager.Keys

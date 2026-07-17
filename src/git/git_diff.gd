@@ -6,7 +6,7 @@
 ## parse_patch() is a bug; tests/git/git_diff_tests.gd asserts it does not. One deliberate difference:
 ## to_lines() counts a trailing newline as an empty last line, because that is what CodeEdit shows.
 
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
 
 ## Lines of context around a change, and how far apart two changes must be to become two hunks.
 ## git's own default, and what the fixtures in tests/git/ were captured with.

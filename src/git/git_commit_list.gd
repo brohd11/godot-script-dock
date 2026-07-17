@@ -1,4 +1,4 @@
-extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
+extends "res://addons/script_dock/src/ui/overlay_item_list.gd"
 
 ## The Git section's Commits list — a read only `git log --oneline` view.
 ##
@@ -10,7 +10,7 @@ extends "res://addons/script_outline/src/ui/overlay_item_list.gd"
 ## x on every row with no column measuring. The subject is the segment that yields; author and date
 ## live in the tooltip.
 
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
 
 # The mono face, for the hash and the hash alone
 var _mono_font:Font

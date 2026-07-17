@@ -9,8 +9,8 @@ extends ItemList
 ## A row may carry no item text, making every segment an overlay. That is the only way to give the
 ## leading string a face of its own, since ItemList has one font for all of its text. See ROW_SPACER.
 
-const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const DIM_ALPHA = 0.5
 

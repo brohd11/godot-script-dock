@@ -1,6 +1,6 @@
 extends VBoxContainer
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
@@ -8,10 +8,10 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 const UFile = UtilsRemote.UFile
 
-const SectionSplit = preload("res://addons/script_outline/src/ui/section_split.gd")
-const FileTabs = preload("res://addons/script_outline/src/file_tabs/file_tabs.gd")
-const Outline = preload("res://addons/script_outline/src/outline/outline.gd")
-const GitPanel = preload("res://addons/script_outline/src/git/git_panel.gd")
+const SectionSplit = preload("res://addons/script_dock/src/ui/section_split.gd")
+const FileTabs = preload("res://addons/script_dock/src/file_tabs/file_tabs.gd")
+const Outline = preload("res://addons/script_dock/src/outline/outline.gd")
+const GitPanel = preload("res://addons/script_dock/src/git/git_panel.gd")
 
 const SECTION_FILE_TABS = &"file_tabs"
 const SECTION_OUTLINE = &"outline"
@@ -134,7 +134,7 @@ func remove_section_by_id(section_id:StringName):
 	if is_instance_valid(section):
 		remove_section(section)
 	else:
-		print("Could not get ScriptOutline section ID: ", section_id)
+		print("Could not get ScriptDock section ID: ", section_id)
 
 func remove_section(section:SectionSplit) -> void:
 	if not section in sections:
@@ -419,4 +419,4 @@ class Keys:
 	const SECTION_SPLIT_OFFSET = &"split_offset"
 
 class EditorSet:
-	const ENABLE_GIT_PANEL = &"plugin/script_outline/enable_git_panel"
+	const ENABLE_GIT_PANEL = &"plugin/script_dock/enable_git_panel"

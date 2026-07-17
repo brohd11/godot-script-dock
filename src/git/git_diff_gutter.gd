@@ -6,8 +6,8 @@ extends Node
 ## `git show HEAD:<path>`, the diff from GitDiff. Hunks are kept per editor even though only the
 ## markers are drawn — the diff preview reads them rather than diffing the same buffer twice.
 
-const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
-const GitDiff = preload("res://addons/script_outline/src/git/git_diff.gd")
+const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const GitDiff = preload("res://addons/script_dock/src/git/git_diff.gd")
 
 const GUTTER_NAME = &"script_outline_git_diff"
 

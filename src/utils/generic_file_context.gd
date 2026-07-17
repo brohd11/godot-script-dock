@@ -1,10 +1,10 @@
 
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 const UFile = UtilsRemote.UFile
 
 const Options = UtilsRemote.Options
 
-const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
+const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 
 enum FileStatus {
 	VALID,
@@ -53,7 +53,7 @@ static func _navigate_to(path:String, os_file:=false):
 	if os_file:
 		OS.shell_show_in_file_manager(ProjectSettings.globalize_path(path))
 	else:
-		ScriptOutline.show_in_tree(path)
+		ScriptDock.show_in_tree(path)
 		pass
 		#show_in_filesystem.emit(path) # this should be for the tree I think? need a better way to handle
 		#EditorInterface.get_file_system_dock().navigate_to_path(path)

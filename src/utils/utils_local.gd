@@ -1,4 +1,4 @@
-const UtilsRemote = preload("res://addons/script_outline/src/utils/utils_remote.gd")
+const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const Options = UtilsRemote.Options
 
@@ -11,7 +11,7 @@ const ItemKeys = UtilsRemote.FSTree.ItemKeys
 
 const FileData = FileSystemSingleton.FileData
 
-const GenericFileContext = preload("res://addons/script_outline/src/utils/generic_file_context.gd")
+const GenericFileContext = preload("res://addons/script_dock/src/utils/generic_file_context.gd")
 
 static func get_file_data(file_path:String, script_data_cache:Dictionary):
 	var data = CacheHelper.get_cached_data(file_path, script_data_cache)
