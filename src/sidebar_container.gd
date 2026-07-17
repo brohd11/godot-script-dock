@@ -114,7 +114,7 @@ func _on_enr_ready():
 #region sections
 
 func add_section(section_id:StringName, title:String, content:Control) -> SectionSplit:
-	var section = SectionSplit.new(section_id, title)
+	var section:SectionSplit = SectionSplit.new(section_id, title)
 	section.set_content(content)
 	section.option_pressed.connect(_on_section_options_pressed)
 	section.collapse_toggled.connect(_on_section_collapse_toggled)
@@ -145,7 +145,11 @@ func remove_section(section:SectionSplit) -> void:
 	var child_section = _get_child_section(section)
 	if is_instance_valid(child_section):
 		child_section.reparent(parent)
-
+	
+	var section_content = section.get_content()
+	if is_instance_valid(section_content) and section_content.has_method("clean_up"):
+		section_content.clean_up()
+	
 	parent.remove_child(section)
 	section.queue_free()
 	sections.erase(section)

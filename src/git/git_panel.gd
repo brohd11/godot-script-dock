@@ -13,12 +13,15 @@ const TabBarContainer = UtilsRemote.TabBarContainer
 const UtilsLocal = preload("res://addons/script_outline/src/utils/utils_local.gd")
 
 const GitUtil = preload("res://addons/script_outline/src/git/git_util.gd")
+const DiffGutter = preload("res://addons/script_outline/src/git/git_diff_gutter.gd")
 const GitChangeList = preload("res://addons/script_outline/src/git/git_change_list.gd")
 const GitCommitList = preload("res://addons/script_outline/src/git/git_commit_list.gd")
 
 const MAIN_REPO = "res://"
 const MAIN_REPO_TITLE = "Project"
 const REFRESH_DEBOUNCE = 1.0
+
+var diff_gutter:DiffGutter
 
 var repo_option_button:OptionButton
 var branch_row:HBoxContainer
@@ -71,6 +74,9 @@ func _ready() -> void:
 	_debounce_timer.wait_time = REFRESH_DEBOUNCE
 	_debounce_timer.timeout.connect(refresh_status)
 	add_child(_debounce_timer)
+	
+	diff_gutter = DiffGutter.new()
+	add_child(diff_gutter)
 
 	repo_option_button = OptionButton.new()
 	repo_option_button.item_selected.connect(_on_repo_selected)
@@ -96,6 +102,8 @@ func _ready() -> void:
 	tab_container = TabBarContainer.new()
 	add_child(tab_container)
 	UControl.expand(tab_container)
+
+	
 
 	change_list = GitChangeList.new()
 	change_list.name = "Changes"
@@ -128,14 +136,13 @@ func _ready() -> void:
 	var glyph_icons = ScriptOutline.get_glyph_icons_node()
 	if is_instance_valid(glyph_icons):
 		glyph_icons.generated.connect(_rebuild_change_list)
-
+	
 	
 	if not _initialized:
 		_apply_dock_data()
 
 
 func _apply_dock_data() -> void:
-	
 	current_repo = _dock_data.get(Keys.CURRENT_REPO, MAIN_REPO)
 	tab_container.set_current_tab(int(_dock_data.get(Keys.CURRENT_TAB, 0)))
 	_dock_data = {}
@@ -146,6 +153,10 @@ func _apply_dock_data() -> void:
 
 func clean_up() -> void:
 	_join_thread()
+	# the gutter tears itself down on PREDELETE too, because remove_section() never calls this — but
+	# on the shutdown path it should come out before the editor starts folding up around it
+	if is_instance_valid(diff_gutter):
+		diff_gutter.clean_up()
 
 
 func refresh_repos() -> void:
@@ -156,7 +167,10 @@ func refresh_repos() -> void:
 		var repo_name = MAIN_REPO_TITLE if repo == MAIN_REPO else repo.trim_suffix("/").get_file()
 		repo_option_button.add_item(repo_name)
 		repo_option_button.set_item_metadata(repo_option_button.item_count - 1, repo)
-
+	
+	if is_instance_valid(diff_gutter):
+		diff_gutter.set_repos(repos)
+	
 	repos_updated.emit()
 
 
@@ -202,9 +216,20 @@ func _clear_lists() -> void:
 	branch_row.tooltip_text = ""
 
 
-func _on_status_updated(_repo_dir:String) -> void:
+func _on_status_updated(repo_dir:String) -> void:
 	_rebuild_change_list()
 	_update_repo_info()
+
+	# a commit is a new baseline for every script open under that repo, and the oid is what says one
+	# happened — a save refreshes this panel but does not move HEAD, and re-reading every open
+	# script's committed side on every save would spawn git for nothing.
+	#
+	# Only ever speaks for current_repo, because that is the only repo this panel reads. It is a
+	# shortcut, not the guarantee: the gutter re-reads a script's baseline whenever it attaches, and
+	# that is what actually covers a commit — which touches only .git, so it never reaches
+	# filesystem_changed and never lands here on its own anyway.
+	if is_instance_valid(diff_gutter):
+		diff_gutter.head_moved(repo_dir, get_branch().get(GitUtil.Keys.BRANCH_OID, ""))
 
 
 ## Spawns nothing: the branch and the counts come out of the status we already have, the commit out of

@@ -112,12 +112,13 @@ func set_content(control:Control) -> void:
 	content.visible = not collapsed_state
 	content_margin.add_child(content)
 
-func get_content():
+func get_content() -> Variant:
 	if content_margin.get_child_count() > 0:
 		return content_margin.get_child(0)
+	return null
 
 func add_header_button(button:Button) -> void:
-	var parent = button.get_parent()
+	var parent:Node = button.get_parent()
 	if parent == header_hbox:
 		return
 	if parent == null:

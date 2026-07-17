@@ -315,6 +315,19 @@ static func find_repos(root:="res://", max_depth:=MAX_DEPTH) -> Array[String]:
 	return repos
 
 
+## The repo a path belongs to, out of a find_repos() result: the deepest one that contains it.
+##
+## Deepest and not first, because repos nest — an addon kept as its own clone is not tracked by the
+## project repo around it at all, so the outer repo would answer "no such file in HEAD" for every
+## script inside it. git itself resolves the innermost; so does this.
+static func find_repo_for(path:String, repos:Array) -> String:
+	var best = ""
+	for repo:String in repos:
+		if path.begins_with(repo) and repo.length() > best.length():
+			best = repo
+	return best
+
+
 ## Blocking. Callers that care about the editor's frame rate should run this off the main thread.
 ##
 ## Porcelain v2, not v1: the branch state arrives as four `# branch.*` header lines instead of one
@@ -396,6 +409,56 @@ static func _merge_patch(repo_dir:String, files:Dictionary, extra_args:Array, hu
 		files[res_path][hunks_key] = parsed[Keys.HUNKS]
 		if parsed[Keys.BINARY]:
 			files[res_path][Keys.BINARY] = true
+
+
+## The rev a committed file is read out of. HEAD and not the index: a gutter marking the index would
+## go blank the moment you staged, which is the opposite of what staging means to a reader.
+const REV_HEAD = "HEAD"
+
+## Whether a committed version of a file could be read, and if not, why not — because the two
+## reasons want opposite things drawn. ABSENT is a file git has no record of, every line of which is
+## genuinely new. ERROR is a repo that would not answer, and the only honest response to that is to
+## draw nothing at all.
+enum Head {
+	OK,
+	ABSENT,
+	ERROR,
+}
+
+## The argv for reading one file out of a rev, split from the spawn so it can be tested.
+##
+## `<rev>:<path>` is a *tree path*, not a pathspec: git does not glob it, so PATHSPEC_LITERAL has no
+## business here — prefixed, git would go looking for a file actually named ":(literal)src/a.gd".
+## A path not starting with "./" resolves from the top of the tree, which is what to_repo_path gives.
+static func build_show_args(rev:String, repo_dir:String, res_path:String) -> Array:
+	return ["show", "%s:%s" % [rev, to_repo_path(repo_dir, res_path)]]
+
+
+## One file's committed content, as text. Blocking, like get_status — run it off the main thread.
+##
+## The exit code alone cannot classify a failure: `git show` answers 128 both for a path that is not
+## in HEAD and for a directory that is not a repo, and the only thing separating them is a sentence
+## of git's prose in the user's locale. So the failure path asks a question with a yes/no answer
+## instead. The distinction is not pedantry — ABSENT means paint every line green, ERROR means paint
+## nothing, and a machine with no git on PATH would otherwise light up every open script.
+##
+## A repo with no commits has no HEAD, fails, and answers rev-parse — so it falls out as ABSENT with
+## no reference to BRANCH_INITIAL, which is the truth: nothing in it is committed yet.
+##
+## read_stderr stays off, as for every read call: git writes the content to stdout, and a merged
+## warning would be handed to the differ as a line of the file.
+#! keys head:Head text:String
+static func get_file_at_head(repo_dir:String, res_path:String) -> Dictionary:
+	var result = run_git(repo_dir, build_show_args(REV_HEAD, repo_dir, res_path))
+	if result[Keys.EXIT] == 0:
+		var output:Array = result[Keys.OUTPUT]
+		# an empty blob is a success with nothing in the array
+		return {Keys.HEAD: Head.OK, Keys.TEXT: String(output[0]) if not output.is_empty() else ""}
+
+	if run_git(repo_dir, ["rev-parse", "--git-dir"])[Keys.EXIT] == 0:
+		return {Keys.HEAD: Head.ABSENT, Keys.TEXT: ""}
+
+	return {Keys.HEAD: Head.ERROR, Keys.TEXT: ""}
 
 
 ## Blocking, like get_status — run it off the main thread.
@@ -579,7 +642,13 @@ static func parse_patch(text:String, repo_dir:String) -> Dictionary:
 
 	# `allow_empty` stays on: an empty context line in a hunk is " ", but a removed empty line is a
 	# bare "-", and dropping empties would silently shift the line counts.
-	for raw_line in text.split("\n"):
+	#
+	# The one newline that is punctuation rather than content is the last: `git diff` terminates its
+	# output with it, and splitting on it yields a trailing "" that the origin match below reads as
+	# an empty context line — a line the hunk header never counted, appended to the last hunk of the
+	# last file in every patch. Every line inside a hunk carries an origin character, so a genuinely
+	# empty one cannot reach here; trimming exactly one is safe.
+	for raw_line in text.trim_suffix("\n").split("\n"):
 		var line = raw_line.trim_suffix("\r")
 
 		if line.begins_with("diff --git "):
@@ -893,10 +962,19 @@ static func expand_paths(command:Command, paths:Array, files:Dictionary) -> Arra
 	return out
 
 
-## A res:// path as a pathspec git will match literally, relative to the repo root — the exact
-## inverse of _to_res_path(), and what run_git's `-C` already resolves against.
+## A res:// path as git sees it: relative to the repo root, which is what run_git's `-C` already
+## resolves against. The exact inverse of _to_res_path().
+##
+## Assumes `path` is under `repo_dir` — trim_prefix hands back a path that is still res:// if it is
+## not, and git would then be asked about a file that cannot exist. find_repo_for() is what picks a
+## repo that makes this true.
+static func to_repo_path(repo_dir:String, path:String) -> String:
+	return path.trim_prefix(repo_dir)
+
+
+## A res:// path as a pathspec git will match literally, relative to the repo root.
 static func to_pathspec(repo_dir:String, path:String) -> String:
-	return PATHSPEC_LITERAL + path.trim_prefix(repo_dir)
+	return PATHSPEC_LITERAL + to_repo_path(repo_dir, path)
 
 
 ## The full argv for a command. `--` keeps a path that looks like a rev from being read as one.
@@ -944,6 +1022,8 @@ class Keys:
 	const REPO = &"repo"
 	const BRANCH = &"branch"
 	const FILES = &"files"
+	## a Head enum value — why get_file_at_head() answered the way it did
+	const HEAD = &"head"
 	const COUNTS = &"counts"
 	const LAST_COMMIT = &"last_commit"
 
