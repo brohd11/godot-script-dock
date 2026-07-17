@@ -15,13 +15,13 @@ const UName = UtilsRemote.UName
 const UResource = UtilsRemote.UResource
 const UGDScript = UtilsRemote.UGDScript
 
-const CollectionSingleton = preload("res://addons/addon_lib/brohd/collections/collection_singleton.gd")
+const CollectionSingleton = UtilsRemote.CollectionSingleton
 const CollectionManager = CollectionSingleton.CollectionManager
 const CollectionBase = CollectionManager.CollectionBase
 const Form = CollectionSingleton.Form
 
 const CacheHelper = UtilsRemote.CacheHelper
-const FSTree = preload("res://addons/addon_lib/brohd/alib_editor/file_system/components/fs_tree.gd")
+const FSTree = UtilsRemote.FSTree
 const ItemKeys = FSTree.ItemKeys
 
 

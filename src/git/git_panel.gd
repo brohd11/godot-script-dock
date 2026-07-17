@@ -13,7 +13,7 @@ const TabBarContainer = UtilsRemote.TabBarContainer
 
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 
-const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const GitUtil = UtilsRemote.GitUtil
 const GitChangeList = preload("res://addons/script_dock/src/git/git_change_list.gd")
 const GitCommitList = preload("res://addons/script_dock/src/git/git_commit_list.gd")
 

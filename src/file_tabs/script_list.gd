@@ -1,8 +1,9 @@
 extends VBoxContainer
 
-const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
+const UtilsRemote = ScriptDock.UtilsRemote
+const UtilsLocal = ScriptDock.UtilsLocal
 
-const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
+const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 
 var filter_line_edit:LineEdit

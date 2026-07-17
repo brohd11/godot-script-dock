@@ -13,8 +13,8 @@ const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 
 
-const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
-const GlyphIcons = preload("res://addons/script_dock/src/ui/glyph_icons.gd")
+const GitUtil = UtilsRemote.GitUtil
+const GlyphIcons = UtilsRemote.GlyphIcons
 
 ## unscaled px of list width below which the status word gives way to its letter
 const COMPACT_BELOW = 200.0

@@ -10,7 +10,7 @@ extends "res://addons/script_dock/src/ui/overlay_item_list.gd"
 ## x on every row with no column measuring. The subject is the segment that yields; author and date
 ## live in the tooltip.
 
-const GitUtil = preload("res://addons/script_dock/src/git/git_util.gd")
+const GitUtil = UtilsRemote.GitUtil
 
 # The mono face, for the hash and the hash alone
 var _mono_font:Font

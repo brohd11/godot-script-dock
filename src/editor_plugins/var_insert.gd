@@ -4,7 +4,7 @@ const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
 
 const Param = PopupWrapper.ItemParams
-const Options = preload("res://addons/addon_lib/brohd/alib_runtime/popup_menu/popup_options.gd")
+const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
 const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
 const GDScriptParser = EditorGDScriptParser.GDScriptParser

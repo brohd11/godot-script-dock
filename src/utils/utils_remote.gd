@@ -28,8 +28,12 @@ const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
 const EditorIcons = preload("uid://viocyrti6wce") #! resolve ALibEditor.Singleton.EditorIcons
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
+const CollectionSingleton = preload("res://addons/addon_lib/brohd/collections/collection_singleton.gd")
 
 const RightClickHandler = preload("uid://mmtkf4h8er3m") #! resolve ClickHandlers.RightClickHandler
 const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
 const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve ALibEditor.FileSystem.Component.FSTree
+
+const GitUtil = preload("uid://cxdracckohh76") #! resolve GitService.GitUtil
+const GlyphIcons = preload("uid://dvguymko6if63") #! resolve GitService.GlyphIcons
