@@ -48,6 +48,9 @@ var _thread:Thread
 var _refresh_queued:bool = false
 var _debounce_timer:Timer
 
+## commands waiting for the worker thread, as [command, paths] — see run_command()
+var _pending_commands:Array = []
+
 
 func get_dock_data() -> Dictionary:
 	return {
@@ -181,6 +184,9 @@ func set_repo(repo_dir:String) -> void:
 	current_repo = repo_dir
 	status = {}
 	commits = []
+	# a command queued against the old repo must not drain against the new one: its paths are res://
+	# paths under the *old* root, so they would not even resolve here
+	_pending_commands.clear()
 	_clear_lists() # don't leave the old repo's rows up while the new git calls run
 	refresh_status()
 
@@ -256,17 +262,65 @@ func get_branch() -> Dictionary:
 
 ## Runs git off the main thread: a cold repo can take long enough to drop frames.
 func refresh_status() -> void:
+	_start_work()
+
+
+## Queues a write for the worker thread, which then re-reads the repo in the same pass.
+##
+## Not run inline: a command on the main thread could interleave with an in-flight `git status`, and
+## a status that read the repo *before* the write would land *after* it and repaint stale rows, with
+## nothing scheduled to correct them. Sharing the one thread makes the write and the re-read
+## unsplittable, and makes the refresh something a caller cannot forget.
+func run_command(command:GitUtil.Command, paths:Array) -> void:
+	if paths.is_empty():
+		return
+
+	# resolved against the status in hand, not on the worker: by the time the thread runs, `status`
+	# may already be the *next* repo's
+	var expanded = GitUtil.expand_paths(command, paths, status.get(GitUtil.Keys.FILES, {}))
+	_pending_commands.append([command, expanded])
+	_start_work()
+
+
+func _start_work() -> void:
 	if is_instance_valid(_thread) and _thread.is_alive():
-		# coalesce rather than pile up threads — re-run once the in flight call lands
+		# coalesce rather than pile up threads — re-run once the in flight call lands. Queued commands
+		# keep their place in _pending_commands and go out with that run.
 		_refresh_queued = true
 		return
 
 	_join_thread()
+
+	var queued = _pending_commands
+	_pending_commands = []
+
 	_thread = Thread.new()
-	_thread.start(_status_task.bind(current_repo))
+	_thread.start(_status_task.bind(current_repo, queued, _is_initial()))
 
 
-func _status_task(repo_dir:String) -> void:
+## Whether the repo has no commits yet, which changes how a file is unstaged — see GitUtil.
+func _is_initial() -> bool:
+	return get_branch().get(GitUtil.Keys.BRANCH_INITIAL, false)
+
+
+func _status_task(repo_dir:String, queued:Array, initial:bool) -> void:
+	# the writes go first and the read that follows is therefore never stale with respect to them
+	var errors:Array = []
+	var wrote_worktree = false
+
+	for entry in queued:
+		var command:GitUtil.Command = entry[0]
+		var result = GitUtil.run_command(repo_dir, command, entry[1], initial)
+
+		if result[GitUtil.Keys.EXIT] != 0:
+			errors.append("git %s failed (%s): %s" % [
+				GitUtil.COMMANDS[command][GitUtil.Keys.CMD_LABEL],
+				result[GitUtil.Keys.EXIT],
+				"\n".join(result[GitUtil.Keys.OUTPUT]).strip_edges(),
+			])
+		elif GitUtil.COMMANDS[command][GitUtil.Keys.CMD_WORKTREE]:
+			wrote_worktree = true
+
 	# every git call shares the one thread: the existing coalescing and stale-repo guard then cover
 	# them for free, and a 100 commit log next to a status is a rounding error
 	var status_result = GitUtil.get_status(repo_dir)
@@ -274,11 +328,17 @@ func _status_task(repo_dir:String) -> void:
 	# thread — so the handoff below keeps its shape and a row click costs no git call at all
 	GitUtil.attach_diffs(repo_dir, status_result)
 	var log_result = GitUtil.get_log(repo_dir)
-	_on_status_ready.call_deferred(repo_dir, status_result, log_result)
+	_on_status_ready.call_deferred(repo_dir, status_result, log_result, errors, wrote_worktree)
 
 
-func _on_status_ready(repo_dir:String, status_result:Dictionary, log_result:Array) -> void:
+func _on_status_ready(repo_dir:String, status_result:Dictionary, log_result:Array, errors:Array,
+		wrote_worktree:bool) -> void:
 	_join_thread()
+
+	# a failed command otherwise looks exactly like one that worked, because the list simply repaints
+	# the rows it already had
+	for error:String in errors:
+		push_error(error)
 
 	if repo_dir == current_repo: # a repo switch mid flight leaves this result stale
 		status = status_result
@@ -286,9 +346,14 @@ func _on_status_ready(repo_dir:String, status_result:Dictionary, log_result:Arra
 		status_updated.emit(repo_dir)
 		commits_updated.emit(repo_dir)
 
-	if _refresh_queued:
+	# discard and delete rewrite or remove files behind the editor's back, and nothing else will tell
+	# it: a script still open on the old contents would write them straight back on the next save
+	if wrote_worktree:
+		EditorInterface.get_resource_filesystem().scan()
+
+	if _refresh_queued or not _pending_commands.is_empty():
 		_refresh_queued = false
-		refresh_status()
+		_start_work()
 
 
 func _join_thread() -> void:
@@ -301,9 +366,9 @@ func _join_thread() -> void:
 	#print(status)
 
 
-func _on_changes_command(command:GitChangeList.ChangesCommand, paths:Array):
-	if command == GitChangeList.ChangesCommand.ADD:
-		GitUtil.add_files(current_repo, paths)
+func _on_changes_command(command:GitUtil.Command, paths:Array):
+	run_command(command, paths)
+
 
 func _on_filesystem_changed() -> void:
 	_debounce_timer.start()

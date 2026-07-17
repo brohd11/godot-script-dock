@@ -60,9 +60,5 @@ static func set_item_list_sb(item_list:ItemList):
 	sb.content_margin_right = 0
 	item_list.add_theme_stylebox_override("panel", sb)
 
-
-
 static func get_script_tabs_node():
-	var root = Engine.get_main_loop().root
-	var ed_node = root.get_child(0) as Node
-	return ed_node.get_node_or_null("EditorSingletons/ScriptTabSingleton")
+	return Singletons.CheckInstance.get_instance("ScriptTabSingleton")

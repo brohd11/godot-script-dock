@@ -263,15 +263,18 @@ static func _status_display(file_data:Dictionary, table:Dictionary, untracked:St
 	var index:Status = file_data.get(Keys.INDEX, Status.NONE)
 	return table.get(worktree if worktree != Status.NONE else index, unknown)
 
+## `read_stderr` stays off for the read calls: OS.execute merges stderr into the same output array,
+## and a stray git warning in there would be fed straight to a parser. The write commands turn it on,
+## because git reports *why* it refused on stderr and there is nothing to parse.
 #! keys exit:int output:Array
-static func run_git(repo_dir:String, args:Array) -> Dictionary:
+static func run_git(repo_dir:String, args:Array, read_stderr:=false) -> Dictionary:
 	# globalized, not project relative: `git -C` resolves a relative path against the editor
 	# process's working directory, which is not the project root
 	var final_args:Array = ["-C", ProjectSettings.globalize_path(repo_dir)]
 	final_args.append_array(args)
 
 	var output = []
-	var exit_code = OS.execute("git", final_args, output)
+	var exit_code = OS.execute("git", final_args, output, read_stderr)
 	return {
 		Keys.EXIT: exit_code,
 		Keys.OUTPUT: output,
@@ -778,20 +781,147 @@ static func _unquote_path(path:String) -> String:
 
 #region Commands
 
-static func add_files(repo_dir:String, paths:Array):
-	_globalize_paths(paths)
-	var commands = ["add"]
-	commands.append_array(paths)
-	print(repo_dir, commands)
-	#return
-	var result = run_git(repo_dir, commands)
-	print(result.exit, result.output)
+## Turns a pathspec into a plain path, killing the glob.
+##
+## git matches a pathspec as a *glob*, so a name containing [ * or ? acts on files that were never
+## named: with ab.txt sitting next to it, `git add -- 'a[bc].txt'` stages both. Survivable for `add`,
+## which can be undone — but DISCARD and DELETE would take the bystander with them, and there is no
+## reflog for work that never reached the index.
+const PATHSPEC_LITERAL = ":(literal)"
+
+## What a file *is*, as a mask, so a command can state the states it accepts as data. Applicability
+## has to be data and not a predicate: a const Dictionary cannot hold a function reference.
+enum State {
+	STAGED     = 1 << 0,
+	UNSTAGED   = 1 << 1,
+	UNTRACKED  = 1 << 2,
+	CONFLICTED = 1 << 3,
+}
+
+enum Command {
+	STAGE,
+	UNSTAGE,
+	DISCARD,
+	DELETE,
+}
+
+## Staging a conflicted file is how git marks it resolved, which is why STAGE accepts CONFLICTED.
+## Picking a side (`--ours` / `--theirs`) is a different job and is not here.
+##
+## DISCARD takes UNSTAGED and not UNTRACKED because `git restore` does not touch a file git has never
+## seen — removing one of those is DELETE, a different command with a different blast radius.
+const COMMANDS = {
+	Command.STAGE: {
+		Keys.CMD_LABEL: "Stage",
+		Keys.CMD_ARGS: ["add"],
+		Keys.CMD_ACCEPTS: State.UNSTAGED | State.UNTRACKED | State.CONFLICTED,
+		Keys.CMD_DESTRUCTIVE: false,
+		Keys.CMD_WORKTREE: false,
+	},
+	Command.UNSTAGE: {
+		Keys.CMD_LABEL: "Unstage",
+		Keys.CMD_ARGS: ["restore", "--staged"],
+		Keys.CMD_ACCEPTS: State.STAGED,
+		Keys.CMD_DESTRUCTIVE: false,
+		Keys.CMD_WORKTREE: false,
+	},
+	Command.DISCARD: {
+		Keys.CMD_LABEL: "Discard Changes",
+		Keys.CMD_ARGS: ["restore"],
+		Keys.CMD_ACCEPTS: State.UNSTAGED,
+		Keys.CMD_DESTRUCTIVE: true,
+		Keys.CMD_WORKTREE: true,
+	},
+	Command.DELETE: {
+		Keys.CMD_LABEL: "Delete File",
+		Keys.CMD_ARGS: ["clean", "-f"],
+		Keys.CMD_ACCEPTS: State.UNTRACKED,
+		Keys.CMD_DESTRUCTIVE: true,
+		Keys.CMD_WORKTREE: true,
+	},
+}
+
+## The unstage that works on a repo with no commits. `git restore --staged` restores the index *from
+## HEAD*, and an initial repo has no HEAD to restore from — it dies with "could not resolve HEAD".
+const ARGS_UNSTAGE_INITIAL:Array = ["rm", "--cached"]
 
 
-static func _globalize_paths(paths:Array):
-	for i in paths.size():
-		var path = paths[i]
-		paths[i] = ProjectSettings.globalize_path(path)
+## Which of State's bits a file has raised, from an entry of the FILES dict.
+##
+## The line kind settles untracked and conflicted outright, before the staged/unstaged pair is read —
+## as in _status_display() and count_changes(). Not an optimisation: an untracked entry is built with
+## a ".." XY pair, so it has *neither* flag set and the kind is the only thing that classifies it.
+static func get_file_state(file_data:Dictionary) -> int:
+	match file_data.get(Keys.KIND, Kind.ORDINARY):
+		Kind.UNTRACKED:
+			return State.UNTRACKED
+		Kind.UNMERGED:
+			return State.CONFLICTED
+
+	var state = 0
+	if file_data.get(Keys.STAGED, false):
+		state |= State.STAGED
+	if file_data.get(Keys.UNSTAGED, false):
+		state |= State.UNSTAGED
+	return state
+
+
+## Whether a command has anything to do to this file — what decides if it is offered on the menu.
+static func command_accepts(command:Command, file_data:Dictionary) -> bool:
+	return get_file_state(file_data) & int(COMMANDS[command][Keys.CMD_ACCEPTS]) != 0
+
+
+## The paths a command must actually be handed, which is not always the ones that were selected.
+##
+## A rename is a delete of the old path plus an add of the new, and the status entry keys on the
+## *new* one. Unstage only that and git leaves the deletion of the old path staged: "D old.txt" plus
+## an untracked "new.txt" — a half-unstaged rename, worse than either end of it. RENAMED_FROM is
+## already parsed; this is what it is for.
+static func expand_paths(command:Command, paths:Array, files:Dictionary) -> Array:
+	if command != Command.UNSTAGE:
+		return paths.duplicate()
+
+	var out:Array = []
+	for path in paths:
+		out.append(path)
+		var file_data:Dictionary = files.get(path, {})
+		if file_data.get(Keys.KIND, Kind.ORDINARY) != Kind.RENAMED:
+			continue
+		var from:String = file_data.get(Keys.RENAMED_FROM, "")
+		if not from.is_empty() and not out.has(from):
+			out.append(from)
+	return out
+
+
+## A res:// path as a pathspec git will match literally, relative to the repo root — the exact
+## inverse of _to_res_path(), and what run_git's `-C` already resolves against.
+static func to_pathspec(repo_dir:String, path:String) -> String:
+	return PATHSPEC_LITERAL + path.trim_prefix(repo_dir)
+
+
+## The full argv for a command. `--` keeps a path that looks like a rev from being read as one.
+static func build_command_args(command:Command, repo_dir:String, paths:Array, initial:=false) -> Array:
+	var args:Array = []
+	if command == Command.UNSTAGE and initial:
+		args.append_array(ARGS_UNSTAGE_INITIAL)
+	else:
+		args.append_array(COMMANDS[command][Keys.CMD_ARGS])
+
+	args.append("--")
+	for path:String in paths:
+		args.append(to_pathspec(repo_dir, path))
+	return args
+
+
+## Blocking, like get_status — the panel runs it on the same worker thread, which is also what keeps
+## a mutation from interleaving with the status read that follows it.
+##
+## `initial` is the repo-has-no-commits flag from BRANCH_INITIAL. Returns run_git's {exit, output};
+## a non-zero exit is the caller's to surface.
+static func run_command(repo_dir:String, command:Command, paths:Array, initial:=false) -> Dictionary:
+	if paths.is_empty():
+		return {Keys.EXIT: 0, Keys.OUTPUT: []}
+	return run_git(repo_dir, build_command_args(command, repo_dir, paths, initial), true)
 
 #endregion
 
@@ -800,6 +930,16 @@ static func _globalize_paths(paths:Array):
 class Keys:
 	const EXIT = &"exit"
 	const OUTPUT = &"output"
+
+	## one entry of the COMMANDS table
+	const CMD_LABEL = &"label"
+	const CMD_ARGS = &"args"
+	## the State mask a command has something to do to
+	const CMD_ACCEPTS = &"accepts"
+	## unrecoverable — no reflog for work that never reached the index
+	const CMD_DESTRUCTIVE = &"destructive"
+	## writes files on disk, so the editor has to be told to look again
+	const CMD_WORKTREE = &"worktree_write"
 
 	const REPO = &"repo"
 	const BRANCH = &"branch"
