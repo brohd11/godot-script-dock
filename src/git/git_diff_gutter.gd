@@ -23,8 +23,20 @@ const GUTTER_BEFORE = &"fold_gutter"
 ## unscaled px: the column, of which the bar is the leftmost part and the rest is air before the text
 const GUTTER_WIDTH = 7
 const BAR_WIDTH = 3
-## the leg of the right triangle marking a deletion
-const WEDGE = 4
+
+## unscaled px of the stub marking a deletion, which owns no line and so sits on the boundary between
+## the two that closed over it.
+##
+## A rect and not the triangle this used to be. A triangle has to be clipped point by point to stay
+## inside the control, so the honest cheap version of that is to skip it whenever it does not fit
+## whole — and "does not fit whole" is a wrapped line half off the top, i.e. exactly when the mark
+## disappears instead of being clipped. A rect intersects in one call and shows the part that fits.
+const TICK_WIDTH = 4
+const TICK_HEIGHT = 2
+
+## unscaled px of the mark down the minimap's left edge. A bar and not a band across the whole
+## minimap: the minimap is there to show the code, and a band would cover what it came to show.
+const MINIMAP_BAR_WIDTH = 3
 
 ## The Changes list's palette, not the editor theme's success/warning/error. UtilsRemote.EditorColors if want to change
 const COLOR_ADDED = GitUtil.Colors.L_GREEN
@@ -92,13 +104,6 @@ func clean_up() -> void:
 	_teardown()
 
 
-
-# clean_up added to remove section, should be ok after tests check out
-#func _notification(what:int) -> void:
-	#if what == NOTIFICATION_PREDELETE:
-		#_teardown()
-
-
 # fine to run twice if needed (clean_up + predelete)
 func _teardown() -> void:
 	_join_thread()
@@ -153,11 +158,19 @@ func _attach(code_edit:CodeEdit, script) -> void:
 	if not state.has(Keys.MARKERS):
 		state[Keys.MARKERS] = PackedByteArray()
 		state[Keys.HUNKS] = []
+		state[Keys.VERSION] = 0
+		state[Keys.CACHE] = []
+		state[Keys.CACHE_KEY] = null
 	_editors[id] = state
 
 	# not ScriptEditorRef, background scripts (tabs) should update too
 	if not code_edit.text_changed.is_connected(_on_text_changed):
 		code_edit.text_changed.connect(_on_text_changed.bind(code_edit))
+
+	# the minimap draws glyphs and nothing else — it has no notion of a gutter, so the marks have to
+	# be painted over it. The draw signal fires after TextEdit's own _draw, so this lands on top.
+	if not code_edit.draw.is_connected(_draw_minimap):
+		code_edit.draw.connect(_draw_minimap.bind(code_edit))
 
 	# draw from the cache now so a tab switch does not flicker
 	# refresh regardless: commit in terminal never reaches filesystem_changed
@@ -171,6 +184,8 @@ func _detach(code_edit:CodeEdit) -> void:
 		return
 	if code_edit.text_changed.is_connected(_on_text_changed):
 		code_edit.text_changed.disconnect(_on_text_changed.bind(code_edit))
+	if code_edit.draw.is_connected(_draw_minimap):
+		code_edit.draw.disconnect(_draw_minimap.bind(code_edit))
 	_remove_gutter(code_edit)
 	_editors.erase(code_edit.get_instance_id())
 	_dirty.erase(code_edit.get_instance_id())
@@ -253,22 +268,185 @@ func _draw_gutter(line:int, _gutter:int, rect:Rect2, code_edit:CodeEdit) -> void
 		return
 
 	var scale = EditorInterface.get_editor_scale()
+	# the first and last rows on screen are half rows, and the rect handed to us is a whole one, so it
+	# hangs over the edge — and clip_contents is false on the editor's CodeEdit, so nothing downstream
+	# will save us. Anything drawn past the edge lands on the scrollbar and the panel below it.
+	var bounds = Rect2(Vector2.ZERO, code_edit.size)
 
 	if mask & (GitDiff.Marker.ADDED | GitDiff.Marker.MODIFIED):
 		var color = COLOR_MODIFIED if mask & GitDiff.Marker.MODIFIED else COLOR_ADDED
-		code_edit.draw_rect(Rect2(rect.position, Vector2(BAR_WIDTH * scale, rect.size.y)), color)
+		_draw_clamped(code_edit, Rect2(rect.position, Vector2(BAR_WIDTH * scale, rect.size.y)),
+			color, bounds)
 
-	# a deletion has no line of its own to occupy, so it is drawn as a wedge on the edge of the line
-	# that closed over it rather than as a bar down the middle of a line that is still there
-	var leg = WEDGE * scale
+	# a deletion has no line of its own to occupy, so it sits on the boundary of the line that closed
+	# over it rather than running down the middle of a line that is still there
+	var tick = Vector2(TICK_WIDTH * scale, TICK_HEIGHT * scale)
 	if mask & GitDiff.Marker.DELETED_ABOVE:
-		var top = rect.position
-		code_edit.draw_colored_polygon(PackedVector2Array([
-			top, top + Vector2(leg, 0), top + Vector2(0, leg)]), COLOR_DELETED)
+		_draw_clamped(code_edit, Rect2(rect.position, tick), COLOR_DELETED, bounds)
 	if mask & GitDiff.Marker.DELETED_BELOW:
-		var bottom = rect.position + Vector2(0, rect.size.y)
-		code_edit.draw_colored_polygon(PackedVector2Array([
-			bottom, bottom + Vector2(leg, 0), bottom - Vector2(0, leg)]), COLOR_DELETED)
+		var bottom = rect.position + Vector2(0, rect.size.y - tick.y)
+		_draw_clamped(code_edit, Rect2(bottom, tick), COLOR_DELETED, bounds)
+
+
+## Nothing reaches the CodeEdit's canvas except through here — a wrapped line half off the top hands
+## us a rect that starts above zero, and there is no clipping downstream to catch it.
+func _draw_clamped(code_edit:CodeEdit, rect:Rect2, color:Color, bounds:Rect2) -> void:
+	var clipped = rect.intersection(bounds)
+	if clipped.has_area():
+		code_edit.draw_rect(clipped, color)
+
+
+## The same markers again, down the minimap — where the gutter cannot reach, because a change that
+## has scrolled off is exactly the one worth being told about.
+##
+## Runs on the CodeEdit's draw signal, which fires after TextEdit has drawn itself, so this paints
+## over the minimap it just drew. Every other draw.connect in this repo targets a control the plugin
+## owns and frees; this one does not, hence the disconnect in _detach().
+##
+## A caret blink is a redraw like any other, so this runs about twice a second on an editor nobody is
+## touching. Hence the cache: the rects only move when the minimap does, and the minimap moves far
+## less often than the control repaints.
+func _draw_minimap(code_edit:CodeEdit) -> void:
+	var state:Dictionary = _editors.get(code_edit.get_instance_id(), {})
+	# hunks and not markers: an unmodified file is the common case and this is the whole cost of it
+	if state.is_empty() or state[Keys.HUNKS].is_empty():
+		return
+	if not code_edit.is_drawing_minimap():
+		return
+
+	for entry in _minimap_rects(code_edit, state):
+		code_edit.draw_rect(entry[0], entry[1])
+
+
+## The marks as [Rect2, Color], from the cache when nothing that moves them has changed.
+##
+## The key is what the geometry is a function of, and nothing else. Notably the anchor line rather
+## than get_v_scroll(): the minimap only moves in whole rows, so a smooth scroll that has not yet
+## shifted it is a hit here where the raw float would miss every frame. get_total_visible_line_count()
+## covers folding, wrapping and the line count in one cheap call.
+func _minimap_rects(code_edit:CodeEdit, state:Dictionary) -> Array:
+	var geometry = _minimap_geometry(code_edit)
+	if geometry.is_empty():
+		return []
+
+	var key = [
+		state[Keys.VERSION],
+		code_edit.size,
+		geometry[Keys.ANCHOR_LINE],
+		code_edit.get_total_visible_line_count(),
+	]
+	if state.get(Keys.CACHE_KEY) == key:
+		return state[Keys.CACHE]
+
+	var rects = _build_minimap_rects(code_edit, state[Keys.MARKERS], geometry)
+	state[Keys.CACHE_KEY] = key
+	state[Keys.CACHE] = rects
+	return rects
+
+
+## What the minimap is currently showing, as a row height and one line whose position is known.
+##
+## The anchor is probed at an exact multiple of the row height, and that is the whole trick.
+## get_minimap_line_at_pos() computes floor((y - margin) / row_height + the fractional part of
+## get_v_scroll()) — so at a y that divides evenly, the fraction has nowhere to go and the answer is
+## stable, while a y that does not divide evenly flips by a line as you scroll through it. Measured
+## on a static minimap (first_visible_line pinned, so it cannot legitimately move): probing m+3, m+6,
+## m+12 and m+300 never wavered, while m+25, m+50, m+100, m+200 and m+500 each flipped by one, at
+## exactly the fraction their remainder predicts. The old walk stepped half a row, so every other
+## probe landed on a non-multiple and jittered — that was the flicker.
+#! keys h:int anchor_line:int anchor_row:int
+func _minimap_geometry(code_edit:CodeEdit) -> Dictionary:
+	var rows = code_edit.get_minimap_visible_lines()
+	if rows <= 0 or code_edit.size.y <= 0.0:
+		return {}
+
+	# x is ignored by the mapping — pos(0, y) and pos(2000, y) answer the same — so it stays 0
+	var margin = code_edit.get_theme_stylebox(&"normal").get_margin(SIDE_TOP)
+
+	# Measured, not modelled. The margin and the scroll fraction are constant additions, so they
+	# cancel in a difference — which is what makes this survive an engine whose internals do not agree
+	# with the numbers it reports. The rough answer is then rounded because the row height is
+	# minimap_char_size.y + line_spacing, two integers; a couple of lines of error over a couple of
+	# hundred rows cannot reach the neighbouring whole number.
+	var ya = int(margin + 100)
+	var yb = int(margin + 400)
+	var la = code_edit.get_minimap_line_at_pos(Vector2i(0, ya))
+	var lb = code_edit.get_minimap_line_at_pos(Vector2i(0, yb))
+	var between = code_edit.get_visible_line_count_in_range(la, lb) - 1
+	if between <= 0:
+		return {}
+	var h = maxi(1, int(round((yb - ya) / float(between))))
+
+	# row 1 and not row 0: at a scroll fraction of exactly 0 the top row answers one line low, which
+	# is its own edge case and not worth understanding when the row below it is free of the whole
+	# question
+	var anchor_row = 1
+	return {
+		Keys.H: h,
+		Keys.ANCHOR_ROW: anchor_row,
+		Keys.ANCHOR_LINE: code_edit.get_minimap_line_at_pos(Vector2i(0, int(margin) + anchor_row * h)),
+	}
+
+
+func _build_minimap_rects(code_edit:CodeEdit, markers:PackedByteArray, geometry:Dictionary) -> Array:
+	var rects:Array = []
+	var h:int = geometry[Keys.H]
+	var height = code_edit.size.y
+	var scale = EditorInterface.get_editor_scale()
+
+	var v_scroll = code_edit.get_v_scroll_bar()
+	var x = code_edit.size.x - code_edit.get_minimap_width()
+	if is_instance_valid(v_scroll) and v_scroll.visible:
+		x -= v_scroll.size.x
+
+	var bar_width = MINIMAP_BAR_WIDTH * scale
+	var tick_height = TICK_HEIGHT * scale
+	var bounds = Rect2(Vector2.ZERO, code_edit.size)
+
+	# by run and not by row: at ~3px a line a per line rect is a stack of slivers, and a hunk is one
+	# thing to look at anyway
+	var i = 0
+	while i < markers.size():
+		var mask = markers[i]
+		if mask == 0:
+			i += 1
+			continue
+
+		var start = i
+		while i < markers.size() and markers[i] == mask:
+			i += 1
+
+		var top = _minimap_y(code_edit, geometry, start)
+		var bottom = _minimap_y(code_edit, geometry, i - 1) + h
+		if bottom <= 0.0 or top >= height:
+			continue # scrolled off the minimap
+
+		var color = COLOR_DELETED
+		var rect := Rect2(x, top, bar_width, tick_height)
+		if mask & (GitDiff.Marker.ADDED | GitDiff.Marker.MODIFIED):
+			color = COLOR_MODIFIED if mask & GitDiff.Marker.MODIFIED else COLOR_ADDED
+			rect = Rect2(x, top, bar_width, bottom - top)
+
+		rect = rect.intersection(bounds)
+		if rect.has_area():
+			rects.append([rect, color])
+
+	return rects
+
+
+## Where the minimap draws a line, counted in rows from the anchor.
+##
+## get_visible_line_count_in_range() is what makes this arithmetic rather than a search: it already
+## knows how many rows sit between two lines, folds and wraps included, so a folded function above
+## the mark shortens the gap without anything here having to notice.
+func _minimap_y(code_edit:CodeEdit, geometry:Dictionary, line:int) -> float:
+	var anchor:int = geometry[Keys.ANCHOR_LINE]
+	var rows:int
+	if line >= anchor:
+		rows = code_edit.get_visible_line_count_in_range(anchor, line) - 1
+	else:
+		rows = -(code_edit.get_visible_line_count_in_range(line, anchor) - 1)
+	return float((geometry[Keys.ANCHOR_ROW] + rows) * int(geometry[Keys.H]))
 
 #endregion
 
@@ -315,6 +493,7 @@ func _recompute(id:int) -> void:
 	if baseline[Keys.HEAD] == GitUtil.Head.ERROR:
 		state[Keys.HUNKS] = []
 		state[Keys.MARKERS] = PackedByteArray()
+		state[Keys.VERSION] += 1
 		_remove_gutter(code_edit)
 		return
 
@@ -325,6 +504,8 @@ func _recompute(id:int) -> void:
 
 	state[Keys.HUNKS] = hunks
 	state[Keys.MARKERS] = GitDiff.hunks_to_markers(hunks, new_lines.size())
+	# what the minimap cache watches — an int to compare, rather than the marker array itself
+	state[Keys.VERSION] += 1
 	code_edit.queue_redraw()
 
 #endregion
@@ -390,6 +571,16 @@ class Keys:
 	const MARKERS = &"markers"
 	## unread here — what the diff preview window will want, so it need not diff the buffer again
 	const HUNKS = &"hunks"
+	## bumped whenever MARKERS is rebuilt, so the minimap cache has an int to compare
+	const VERSION = &"version"
+	## the minimap marks as [Rect2, Color], and what they were computed for
+	const CACHE = &"minimap_cache"
+	const CACHE_KEY = &"minimap_cache_key"
+
+	## one entry of _minimap_geometry()
+	const H = &"row_height"
+	const ANCHOR_LINE = &"anchor_line"
+	const ANCHOR_ROW = &"anchor_row"
 
 	## one entry of _baselines, and REPO is on an _editors entry too
 	const REPO = &"repo"
