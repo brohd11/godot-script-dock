@@ -37,3 +37,4 @@ const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve ALibEditor.FileSystem.C
 
 const GitUtil = preload("uid://cxdracckohh76") #! resolve GitService.GitUtil
 const GlyphIcons = preload("uid://dvguymko6if63") #! resolve GitService.GlyphIcons
+const GitDataDraw = preload("uid://c0xta2pji111r") #! resolve GitService.GitDataDraw

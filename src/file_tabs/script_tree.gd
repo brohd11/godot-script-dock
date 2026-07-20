@@ -15,15 +15,20 @@ const Options = UtilsRemote.Options
 const EditorColors = UtilsRemote.EditorColors
 const CacheHelper = UtilsRemote.CacheHelper
 
+const GitDataDraw = UtilsRemote.GitDataDraw
+
 
 const NEW_TAB = "New Tab"
 
 var script_list_manager:ScriptListManager
 
 var immutable:bool = false
-var script_tree:Tree
 
 var _script_data_cache:= {}
+
+# git colouring. Owned here rather than in FSTree: this tab reaches into both libraries, and the
+# file_system side stays unaware that git exists.
+var _git_tree_overlay:GitDataDraw.GitTreeHelper
 
 signal create_new_tab(selected_path:String)
 
@@ -33,10 +38,13 @@ func _init() -> void:
 
 func _on_fs_ready():
 	filter_line_edit.placeholder_text = "Filter Scripts"
-	
+
 	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
 	_on_file_system_changed()
 	
+	# handles icon placement and overlay, as well as color
+	_git_tree_overlay = GitDataDraw.GitTreeHelper.new(file_tree)
+	GitService.get_instance().repos_updated.connect(_on_file_system_changed)
 	_build_tree()
 
 func get_options():
@@ -68,6 +76,10 @@ func _set_show_all_files(state:bool):
 	else:
 		file_extensions = ScriptListManager.get_text_file_types()
 	_refresh_files_and_tree()
+
+func _process_custom_item(file_path:String, tree_item:TreeItem):
+	if is_instance_valid(_git_tree_overlay):
+		_git_tree_overlay.process_tree_item(file_path, tree_item)
 
 
 func _custom_right_click_menu(items:Dictionary, selected_path:String, selected_paths:Array):
