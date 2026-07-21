@@ -57,8 +57,15 @@ static func _has_icon(data:Dictionary, key:StringName) -> bool:
 
 static func set_item_list_sb(item_list:ItemList):
 	var sb:StyleBoxFlat = item_list.get_theme_stylebox("panel").duplicate()
+	#var new_sb = sb.duplicate()
 	sb.content_margin_right = 0
-	item_list.add_theme_stylebox_override("panel", sb)
+	var set_sb_call = func():
+		if item_list.get_v_scroll_bar().visible:
+			item_list.add_theme_stylebox_override("panel", sb)
+		else:
+			item_list.remove_theme_stylebox_override("panel")
+	item_list.get_v_scroll_bar().visibility_changed.connect(set_sb_call)
+	set_sb_call.call()
 
 static func get_script_tabs_node():
 	return Singletons.CheckInstance.get_instance("ScriptTabSingleton")

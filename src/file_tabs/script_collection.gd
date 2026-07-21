@@ -35,6 +35,7 @@ var _script_data_cache:= {}
 
 var filter_line_edit:LineEdit
 var item_list:ItemList
+var git_icon_overlay:UtilsRemote.GitDataDraw.GitItemHelper
 
 var current_filter_text:String = ""
 
@@ -92,6 +93,8 @@ func _on_collections_updated():
 	_build_list()
 
 func _build_list():
+	if not is_instance_valid(git_icon_overlay):
+		git_icon_overlay = UtilsRemote.GitDataDraw.GitItemHelper.new(item_list)
 	var selected_idxes = item_list.get_selected_items()
 	var selected_idx = -1
 	var selected_uid = ""
@@ -109,7 +112,7 @@ func _build_list():
 		var display_name = data.get(Keys.DISPLAY_NAME)
 		if filtering:
 			if not current_filter_text.is_subsequence_ofn(display_name):
-				continue
+				continue 
 		
 		data[Keys.UID] = uid
 		var path = data.get(Keys.PATH)
@@ -125,6 +128,8 @@ func _build_list():
 		item_list.set_item_icon_modulate(idx, file_data.get(ItemKeys.ICON_COLOR))
 		item_list.set_item_metadata(idx, data)
 		item_list.set_item_tooltip(idx, path)
+		
+		git_icon_overlay.set_item_fg_color(idx, path)
 	
 	if selected_idx > -1:
 		item_list.select(selected_idx)
@@ -323,8 +328,8 @@ func _custom_right_click():
 	var idx = get_selected_item()
 	var path = get_item_path(idx)
 	
-	var valid:UtilsLocal.GenericFileContext.FileStatus = UtilsLocal.GenericFileContext.right_click(options, path)
-	if valid == UtilsLocal.GenericFileContext.FileStatus.VALID:
+	var valid:UtilsRemote.FSSmallPopup.FileStatus = UtilsRemote.FSSmallPopup.right_click(options, path)
+	if valid == UtilsRemote.FSSmallPopup.FileStatus.VALID:
 		options.add_separator()
 		options.add_option("Remove", _remove_item.bind(item_list.get_selected_items()[0]), ["Close"])
 	

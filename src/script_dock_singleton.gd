@@ -19,7 +19,7 @@ const _CACHE_BIN_PATH = "res://.godot/addons/script_dock/script_cache.bin"
 const PE_STRIP_CAST_SCRIPT = preload("res://addons/script_dock/src/script_dock_singleton.gd")
 
 static func get_singleton_name() -> String:
-	return "ScriptDockSingleton"
+	return "ScriptDock"
 
 static func get_instance() -> PE_STRIP_CAST_SCRIPT:
 	return _get_instance(PE_STRIP_CAST_SCRIPT)
@@ -44,7 +44,9 @@ func _all_unregistered_callback():
 	clean_up()
 
 func _get_ready_bool() -> bool:
-	return is_node_ready()
+	if is_instance_valid(sidebar_container):
+		return sidebar_container.is_node_ready()
+	return false
 
 #endregion
 

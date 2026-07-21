@@ -146,9 +146,10 @@ func remove_section(section:SectionSplit) -> void:
 	if is_instance_valid(child_section):
 		child_section.reparent(parent)
 	
-	var section_content = section.get_content()
-	if is_instance_valid(section_content) and section_content.has_method("clean_up"):
-		section_content.clean_up()
+	var section_content = section.remove_content()
+	if is_instance_valid(section_content):
+		if section_content.has_method("clean_up"):
+			section_content.clean_up()
 	
 	parent.remove_child(section)
 	section.queue_free()

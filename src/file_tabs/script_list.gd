@@ -11,6 +11,7 @@ var filter_line_edit:LineEdit
 var script_list_manager:ScriptListManager
 
 var item_list:ItemList
+var git_icon_helper:UtilsRemote.GitDataDraw.GitItemHelper
 
 var current_filter_text:String = ""
 
@@ -45,6 +46,8 @@ func _on_cache_updated():
 	_build_list()
 
 func _build_list():
+	if not is_instance_valid(git_icon_helper):
+		git_icon_helper = UtilsRemote.GitDataDraw.GitItemHelper.new(item_list)
 	var filtering = current_filter_text != ""
 	if not is_instance_valid(script_list_manager.current_script_editor):
 		item_list.clear() # means there are no editors present
@@ -75,6 +78,10 @@ func _build_list():
 		item_list.set_item_metadata(idx, script_idx)
 		if script_idx == selected_idx:
 			item_list.select(idx)
+		
+		git_icon_helper.set_item_fg_color(idx, data.get(SLKeys.TOOLTIP))
+	
+	item_list.queue_redraw()
 
 func _on_filter_line_text_changed(new_text:String):
 	current_filter_text = new_text

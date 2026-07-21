@@ -108,6 +108,10 @@ func set_content(control:Control) -> void:
 	content.visible = not collapsed_state
 	content_margin.add_child(content)
 
+func remove_content():
+	content_margin.remove_child(content)
+	return content
+
 func get_content() -> Variant:
 	if content_margin.get_child_count() > 0:
 		return content_margin.get_child(0)
