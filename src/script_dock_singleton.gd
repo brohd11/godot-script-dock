@@ -78,14 +78,16 @@ func _ready() -> void:
 		# comment for now, need to work off of icon names, not icons for serialization
 		pass
 	
-	right_click_handler = RightClickHandler.new()
-	add_child(right_click_handler)
+	
 
 	var_insert_context = VarInsertContext.new()
 	initial_plugin.add_context_menu_plugin(EditorContextMenuPlugin.CONTEXT_SLOT_SCRIPT_EDITOR_CODE, var_insert_context)
 	
 	await get_tree().process_frame
 	sidebar_container = SideBarContainer.new()
+	
+	right_click_handler = RightClickHandler.new()
+	sidebar_container.add_child(right_click_handler)
 	
 	dm_instance_manager = DockManager.InstanceManager.new(initial_plugin, false, true)
 	var dm = dm_instance_manager.new_persistent_dock_manager(sidebar_container, DockManager.Slot.DOCK_SLOT_LEFT_UR)
