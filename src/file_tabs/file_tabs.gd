@@ -382,8 +382,8 @@ func show_in_tree(path:String):
 	script_tree.tree_helper.show_tree_item(script_tree.tree_helper.get_tree_item(path))
 
 class Keys:
-	const CURRENT_TAB = &"script_container.current_tab"
-	const TAB_TITLE_MODE = &"script_container.tab_title_mode"
+	const CURRENT_TAB = &"file_tabs.current_tab"
+	const TAB_TITLE_MODE = &"file_tabs.tab_title_mode"
 	
 	const TAB_TITLE = &"tab_title"
 	const TAB_ICON = &"tab_icon"

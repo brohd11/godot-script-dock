@@ -2,7 +2,6 @@ extends VBoxContainer
 
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
-const SettingHelperEditor = UtilsRemote.SettingHelperEditor
 const PluginButton = UtilsRemote.PluginButton
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
@@ -11,19 +10,12 @@ const UFile = UtilsRemote.UFile
 const SectionSplit = preload("res://addons/script_dock/src/ui/section_split.gd")
 const FileTabs = preload("res://addons/script_dock/src/file_tabs/file_tabs.gd")
 const Outline = preload("res://addons/script_dock/src/outline/outline.gd")
-const GitPanel = preload("res://addons/script_dock/src/git/git_panel.gd")
 
 const SECTION_FILE_TABS = &"file_tabs"
 const SECTION_OUTLINE = &"outline"
-const SECTION_GIT = &"git"
-
-var settings_helper:SettingHelperEditor
-
-var enable_git_panel:bool = true
 
 var script_container:FileTabs
 var script_outline:Outline
-#var git_panel:GitPanel
 
 ## the section chain, top to bottom. sections[i] is the parent of sections[i + 1]
 var sections:Array[SectionSplit] = []
@@ -44,32 +36,29 @@ var editor_script_list_vbox:VBoxContainer
 var editor_outline_vbox:VBoxContainer
 
 
+# _dock_data is the persistent backing store: present sections are flushed into it here, while
+# entries for sections that were removed (e.g. git_view disabled) are left untouched so they survive.
 func get_dock_data() -> Dictionary:
-	var data = {}
-	data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
-	data[Keys.SECTIONS] = _get_sections_data()
-
-	for section:SectionSplit in sections:
-		var content = section.get_content()
-		if content.has_method(&"get_dock_data"):
-			data.merge(content.get_dock_data(), true)
-
-	return data
+	_dock_data[Keys.IN_SCRIPT_EDITOR_SIDEBAR] = _in_script_editor_sidebar
+	for section in sections:
+		_flush_section(section)
+	return _dock_data
 
 func set_dock_data(data:Dictionary) -> void:
 	_dock_data = data
 	_in_script_editor_sidebar = _dock_data.get(Keys.IN_SCRIPT_EDITOR_SIDEBAR, true)
-	
-	_set_sections_data(_dock_data.get(Keys.SECTIONS, {}))
 
-	_sections_call(&"set_dock_data", [data])
+	# built-in sections already exist by the time DockManager delivers the saved data; hand each
+	# its own slice, then restore the chain order
+	for section in sections:
+		_apply_section(section)
+	_apply_section_order(_dock_data.get(Keys.SECTIONS, {}))
+	_set_stretch_ratios()
+	# on this frame every size is still zero, so an offset applied now would just be
+	# clamped away — wait until the containers have actually laid out
+	_refresh_chain_state.call_deferred()
 
 func _init():
-	settings_helper = SettingHelperEditor.new()
-	settings_helper.subscribe_property(self, &"enable_git_panel", EditorSet.ENABLE_GIT_PANEL, true)
-	settings_helper.initialize()
-	settings_helper.settings_changed.connect(_on_editor_settings_changed)
-	
 	add_theme_constant_override("separation", 0)
 
 	right_click_handler = RightClickHandler.new()
@@ -83,9 +72,6 @@ func _init():
 
 	_add_builtin_section(SECTION_FILE_TABS)
 	_add_builtin_section(SECTION_OUTLINE)
-	
-	# checks editor setting if git enabled
-	_on_editor_settings_changed()
 
 
 func _ready() -> void:
@@ -124,6 +110,10 @@ func add_section(section_id:StringName, title:String, content:Control) -> Sectio
 	parent.add_child(section)
 	sections.append(section)
 
+	# restore this section's saved slice — for a section added late (git_view) _dock_data is already
+	# populated; for a built-in added during _init it just applies defaults until set_dock_data arrives
+	_apply_section(section)
+
 	_set_stretch_ratios()
 	_refresh_chain_state()
 	set_margins(_in_script_editor_sidebar) # the chain grew, so which section is last moved
@@ -132,6 +122,8 @@ func add_section(section_id:StringName, title:String, content:Control) -> Sectio
 func remove_section_by_id(section_id:StringName):
 	var section = _get_section(section_id)
 	if is_instance_valid(section):
+		# snapshot while the content is still live, so its state round-trips if the section returns
+		_flush_section(section)
 		remove_section(section)
 	else:
 		print("Could not get ScriptDock section ID: ", section_id)
@@ -205,43 +197,32 @@ func _on_section_collapse_toggled(_section:SectionSplit) -> void:
 
 #region dock data
 
-func _get_sections_data() -> Dictionary:
-	var data = {}
-	for i in range(sections.size()):
-		var section = sections[i]
-		data[String(section.id)] = {
-			Keys.SECTION_INDEX: i,
-			Keys.SECTION_COLLAPSED: section.collapsed_state,
-			Keys.SECTION_SPLIT_OFFSET: section.offset_pref,
-		}
-	return data
+# Snapshot a live section into the backing store: its split state under SECTIONS, its content
+# payload under SECTIONS_DATA. Keyed by String(id) so lookups stay consistent with persisted data.
+func _flush_section(section:SectionSplit) -> void:
+	var id = String(section.id)
+	_get_section_split_data(id).merge({
+		Keys.SECTION_INDEX: sections.find(section),
+		Keys.SECTION_COLLAPSED: section.collapsed_state,
+		Keys.SECTION_SPLIT_OFFSET: section.offset_pref,
+	}, true)
+	var content = section.get_content()
+	if is_instance_valid(content) and content.has_method(Keys.GET_DOCK_DATA):
+		_dock_data.get_or_add(Keys.SECTIONS_DATA, {})[id] = content.call(Keys.GET_DOCK_DATA)
 
 
-func _set_sections_data(data:Dictionary) -> void:
-	if data.is_empty():
-		_migrate_legacy_dock_data()
-	else:
-		for section in sections:
-			var section_data = data.get(String(section.id))
-			if section_data == null:
-				continue
-			section.collapsed_state = bool(section_data.get(Keys.SECTION_COLLAPSED, false))
-			section.offset_pref = int(section_data.get(Keys.SECTION_SPLIT_OFFSET, 0))
+# Push a section's saved slice from the backing store onto the live section.
+func _apply_section(section:SectionSplit) -> void:
+	var id = String(section.id)
+	var split = _get_section_split_data(id)
+	section.collapsed_state = bool(split.get(Keys.SECTION_COLLAPSED, false))
+	section.offset_pref = int(split.get(Keys.SECTION_SPLIT_OFFSET, 0))
 
-		_apply_section_order(data)
-
-	_set_stretch_ratios()
-	# on this frame every size is still zero, so an offset applied now would just be
-	# clamped away — wait until the containers have actually laid out
-	_refresh_chain_state.call_deferred()
-
-
-## Layouts saved before sections existed kept the outline's fold state on its own key.
-func _migrate_legacy_dock_data() -> void:
-	var outline_vis = _dock_data.get(Outline.OutlineKeys.DOCK_OUTLINE_VIS, true)
-	var outline_section = get_section(SECTION_OUTLINE)
-	if is_instance_valid(outline_section):
-		outline_section.collapsed_state = not outline_vis
+	var content = section.get_content()
+	# only hand over real saved data — a first-ever section shouldn't be handed an empty dict
+	var content_data = _dock_data.get(Keys.SECTIONS_DATA, {}).get(id)
+	if content_data != null and is_instance_valid(content) and content.has_method(Keys.SET_DOCK_DATA):
+		content.call(Keys.SET_DOCK_DATA, content_data)
 
 
 func _apply_section_order(data:Dictionary) -> void:
@@ -346,19 +327,8 @@ func set_margins(sidebar:bool):
 	# these are just offset from the main container
 	val = 2
 	val *= EditorInterface.get_editor_scale()
-	var last = sections.size() - 1
 	for i in range(sections.size()):
-		var top = val if i == 0 else 0
-		var bottom = val if i == last else 0
 		sections[i].set_margins(val, val, val, 0)
-
-func _on_editor_settings_changed():
-	var git_panel = _get_section(SECTION_GIT)
-	var git_valid = is_instance_valid(git_panel)
-	if enable_git_panel and not git_valid:
-		_add_builtin_section(SECTION_GIT)
-	elif not enable_git_panel and git_valid:
-		remove_section(git_panel)
 
 func clean_up():
 	_sections_call(&"clean_up")
@@ -381,9 +351,6 @@ func _add_builtin_section(section_id:StringName):
 	if section_id == SECTION_FILE_TABS:
 		control = FileTabs.new()
 		title = "Files"
-	elif section_id == SECTION_GIT:
-		control = GitPanel.new()
-		title = "Git"
 	elif section_id == SECTION_OUTLINE:
 		control = Outline.new()
 		title = "Outline"
@@ -410,14 +377,18 @@ func show_in_tree(path:String):
 	file_tab.get_content().show_in_tree(path)
 
 
+func _get_section_split_data(section_id) -> Dictionary:
+	return _dock_data.get_or_add(Keys.SECTIONS, {}).get_or_add(String(section_id), {})
+
 
 class Keys:
 	const IN_SCRIPT_EDITOR_SIDEBAR = &"sidebar_container.in_script_editor_sidebar"
 	const SECTIONS = &"sidebar_container.sections"
+	const SECTIONS_DATA = &"sidebar_container.sections_data"
 
 	const SECTION_INDEX = &"index"
 	const SECTION_COLLAPSED = &"collapsed"
 	const SECTION_SPLIT_OFFSET = &"split_offset"
-
-class EditorSet:
-	const ENABLE_GIT_PANEL = &"plugin/script_dock/enable_git_panel"
+	
+	const GET_DOCK_DATA = &"get_dock_data"
+	const SET_DOCK_DATA = &"set_dock_data"
