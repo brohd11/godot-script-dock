@@ -1388,6 +1388,8 @@ class OutlineTree extends Tree:
 		var type_data = gdscript_parser.get_code_edit_parser().get_type_from_line(line_idx)
 		if type_data and type_data.get(ParserKeys.TYPE) == "var":
 			var type_array = type_data.get("result")
+			if type_array == null:
+				return {}
 			var assignment = type_array[2]
 			#print("ADJ STRING::ASSIGN::", assignment)
 			var keys_completion = TagParser.get_tag_parser("keys", false)

@@ -35,7 +35,3 @@ const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Opt
 
 const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve ALibEditor.FileSystem.Component.FSTree
 const FSSmallPopup = preload("uid://1gdu201y6jro") #! resolve ALibEditor.FileSystem.Component.SmallPopup
-
-const GitUtil = preload("uid://cxdracckohh76") #! resolve GitService.GitUtil
-const GlyphIcons = preload("uid://dvguymko6if63") #! resolve GitService.GlyphIcons
-const GitDataDraw = preload("uid://c0xta2pji111r") #! resolve GitService.GitDataDraw

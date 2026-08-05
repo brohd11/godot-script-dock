@@ -15,8 +15,11 @@ const Options = UtilsRemote.Options
 const EditorColors = UtilsRemote.EditorColors
 const CacheHelper = UtilsRemote.CacheHelper
 
-const GitDataDraw = UtilsRemote.GitDataDraw
+const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
 
+# git colour/icons. Can keep the tree agnostic if commented as such
+#const GitDataDraw = UtilsRemote.GitDataDraw
+var _git_tree_overlay #:GitDataDraw.GitTreeHelper
 
 const NEW_TAB = "New Tab"
 
@@ -26,9 +29,6 @@ var immutable:bool = false
 
 var _script_data_cache:= {}
 
-# git colouring. Owned here rather than in FSTree: this tab reaches into both libraries, and the
-# file_system side stays unaware that git exists.
-var _git_tree_overlay:GitDataDraw.GitTreeHelper
 
 signal create_new_tab(selected_path:String)
 
@@ -38,14 +38,22 @@ func _init() -> void:
 
 func _on_fs_ready():
 	filter_line_edit.placeholder_text = "Filter Scripts"
-
-	filesystem_singleton.filesystem_changed.connect(_on_file_system_changed, 1)
-	_on_file_system_changed()
 	
-	# handles icon placement and overlay, as well as color
-	_git_tree_overlay = GitDataDraw.GitTreeHelper.new(file_tree)
-	GitService.get_instance().repos_updated.connect(_on_file_system_changed)
+	filesystem_singleton.filesystem_paths_changed.connect(_on_file_system_changed, 1)
+	_on_file_system_changed(true) # force a build
+	
+	if GitCheck.has_git_service():
+		var git_service = GitCheck.get_git_service()
+		#^ this hard dependencies GitService, do I want to make it optional?
+		# handles icon placement and overlay, as well as color
+		_git_tree_overlay = git_service.GitDataDraw.GitTreeHelper.new(file_tree)
+		git_service.refresh_finished.connect(_on_git_refresh)
+	
 	_build_tree()
+
+func _on_git_refresh():
+	if is_instance_valid(_git_tree_overlay):
+		_git_tree_overlay.reprocess_tree()
 
 func get_options():
 	var options = Options.new()
@@ -111,6 +119,8 @@ func _handle_custom_popup_id(id, popup):
 
 
 func _get_file_data(file_path:String):
+	if file_path.ends_with("/"):
+		return _get_folder_data(file_path)
 	return UtilsLocal.get_file_data(file_path, _script_data_cache)
 
 

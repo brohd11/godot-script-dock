@@ -70,7 +70,9 @@ func _get_plugin_icon() -> Texture2D:
 func _ready() -> void:
 	FileSystemSingleton.register_node(initial_plugin)
 	EditorGDScriptParser.register_node(initial_plugin)
-	GitService.register_node(initial_plugin)
+	if GitCheck.has_git_service():
+		GitCheck.get_git_service().register_node(initial_plugin)
+	
 	#ScriptEditorRef.subscribe()
 	var script_cache = UFile.get_data_bin(_CACHE_BIN_PATH)
 	if script_cache != null:
@@ -104,7 +106,8 @@ func clean_up() -> void:
 	else:
 		FileSystemSingleton.unregister_node(initial_plugin)
 		EditorGDScriptParser.unregister_node(initial_plugin)
-		GitService.unregister_node(initial_plugin)
+		if GitCheck.has_git_service():
+			GitCheck.get_git_service().unregister_node(initial_plugin)
 
 	if is_instance_valid(var_insert_context):
 		plugin.remove_context_menu_plugin(var_insert_context)
@@ -143,3 +146,12 @@ static func show_in_tree(path:String):
 
 static func test():
 	remove_section("Test")
+
+class GitCheck:
+	const GIT_SERVICE = "GitService"
+	
+	static func has_git_service():
+		return Singletons.CheckInstance.check_valid(GIT_SERVICE)
+	
+	static func get_git_service():
+		return Singletons.CheckInstance.get_instance(GIT_SERVICE)

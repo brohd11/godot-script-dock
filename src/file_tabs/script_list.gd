@@ -6,12 +6,16 @@ const UtilsLocal = ScriptDock.UtilsLocal
 const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 
+const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
+#const GitDataDraw = GitService.GitDataDraw
+var git_icon_helper # :GitDataDraw.GitItemHelper
+
 var filter_line_edit:LineEdit
 
 var script_list_manager:ScriptListManager
 
 var item_list:ItemList
-var git_icon_helper:UtilsRemote.GitDataDraw.GitItemHelper
+
 
 var current_filter_text:String = ""
 
@@ -47,7 +51,9 @@ func _on_cache_updated():
 
 func _build_list():
 	if not is_instance_valid(git_icon_helper):
-		git_icon_helper = UtilsRemote.GitDataDraw.GitItemHelper.new(item_list)
+		if GitCheck.has_git_service():
+			git_icon_helper = GitCheck.get_git_service().GitDataDraw.GitItemHelper.new(item_list)
+	
 	var filtering = current_filter_text != ""
 	if not is_instance_valid(script_list_manager.current_script_editor):
 		item_list.clear() # means there are no editors present

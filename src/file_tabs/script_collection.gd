@@ -24,6 +24,9 @@ const CacheHelper = UtilsRemote.CacheHelper
 const FSTree = UtilsRemote.FSTree
 const ItemKeys = FSTree.ItemKeys
 
+const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
+#const GitDataDraw = GitService.GitDataDraw
+var git_icon_overlay# :GitDataDraw.GitItemHelper
 
 const COL_MANAGER_NAME = &"script_outline"
 var col_storage_dir:String = "res://.addons/script_dock/collections/"
@@ -35,7 +38,7 @@ var _script_data_cache:= {}
 
 var filter_line_edit:LineEdit
 var item_list:ItemList
-var git_icon_overlay:UtilsRemote.GitDataDraw.GitItemHelper
+
 
 var current_filter_text:String = ""
 
@@ -94,7 +97,9 @@ func _on_collections_updated():
 
 func _build_list():
 	if not is_instance_valid(git_icon_overlay):
-		git_icon_overlay = UtilsRemote.GitDataDraw.GitItemHelper.new(item_list)
+		if GitCheck.has_git_service():
+			git_icon_overlay = GitCheck.get_git_service().GitDataDraw.GitItemHelper.new(item_list)
+	
 	var selected_idxes = item_list.get_selected_items()
 	var selected_idx = -1
 	var selected_uid = ""
