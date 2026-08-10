@@ -1,9 +1,8 @@
-extends FSTree
+extends "res://addons/addon_lib/brohd/alib_editor/file_system/components/fs_tree.gd" #! ext UtilsRemote.FSTree
 
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
-const FSTree = UtilsRemote.FSTree
 const UResource = UtilsRemote.UResource
 const UGDScript = UtilsRemote.UGDScript
 
