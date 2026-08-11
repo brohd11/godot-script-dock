@@ -6,6 +6,7 @@ const PluginButton = UtilsRemote.PluginButton
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 const UFile = UtilsRemote.UFile
+const UVersion = UtilsRemote.UVersion
 
 const SectionSplit = preload("res://addons/script_dock/src/ui/section_split.gd")
 const FileTabs = preload("res://addons/script_dock/src/file_tabs/file_tabs.gd")
@@ -23,7 +24,7 @@ var sections:Array[SectionSplit] = []
 var _chain_margin:MarginContainer
 
 var _dock_data:Dictionary
-var _in_script_editor_sidebar:bool = false
+var _in_script_editor_sidebar:bool = true
 
 var right_click_handler:RightClickHandler
 
@@ -273,7 +274,11 @@ func _merge_shared_options(options:Options) -> Options:
 	options.add_separator()
 	var in_docks = _is_in_docks()
 	var move_message = "Move to ScriptEditor" if in_docks else "Move to Docks"
-	var move_icon = "Script" if in_docks else "EditorDock"
+	var dock_icon = "EditorDock"
+	if UVersion.get_minor_version() < 6:
+		dock_icon = "TabContainer"
+	
+	var move_icon = "Script" if in_docks else dock_icon
 	options.add_option(move_message, _move_to_from_sidebar.bind(in_docks), [move_icon])
 
 	if in_docks:
@@ -284,8 +289,12 @@ func _merge_shared_options(options:Options) -> Options:
 func _is_in_docks():
 	var parent = get_parent()
 	var par_class = parent.get_class()
-	if par_class == "EditorDock":
-		return true
+	if UVersion.get_minor_version() < 6:
+		if par_class == "TabContainer":
+			return true
+	else:
+		if par_class == "EditorDock":
+			return true
 	var parent_parent = parent.get_parent()
 	if parent_parent is DockManager.PanelWindow:
 		return true
@@ -300,6 +309,7 @@ func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
 		editor_side_bar_vsplit.add_child(self)
 		editor_side_bar_vsplit.remove_child(editor_outline_vbox)
 		editor_script_list_vbox.hide()
+		show() # necessary in 4.4 for some reason
 	else:
 		if get_parent() == editor_side_bar_vsplit:
 			editor_side_bar_vsplit.remove_child(self)

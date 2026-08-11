@@ -16,6 +16,8 @@ exports:
     remote_dir: "res://addons/script_dock/src/remote"
     source: "res://addons/script_dock"
 options:
+  use_tag_in_cfg: true
+  exported_deps: ["brohd11/godot-tree-sitter-gd@v1.0.4"]
   include_import: true
   include_uid: true
   overwrite: true
@@ -24,6 +26,7 @@ options:
     parse_cs:
       namespace_rename: {}
     parse_gd:
+      reduce_access_paths: true
       backport_string_renames: {}
       class_rename_ignore: []
       replace_editor_interface: false

@@ -329,6 +329,7 @@ func _set_current_access_path(build:=false):
 		_build_breadcrumb(current_access_path)
 	if current_access_path == "null" or selected == current_access_path:
 		return
+	
 	if _follow_cursor:
 		outline_tree.select_path(current_access_path, {
 			"scroll_tree": true
@@ -785,7 +786,7 @@ class OutlineTree extends Tree:
 			if item_type == OutlineKeys.ITEM_TYPE_ARG or item_type == OutlineKeys.ITEM_TYPE_LOCAL_VAR:
 				var func_obj:ParserFunc = MemberData.get_lv_func_obj_from_access_path(access_path, line_index) as ParserFunc
 				if not func_obj:
-					MemberData.print_deb("Outline-infer_queue--Could not get func obj::",access_path)
+					MemberData.print_deb(["Outline-infer_queue--Could not get func obj::",access_path])
 					continue
 				
 				member_data = func_obj.get_local_var_member_data(member_name)
@@ -799,7 +800,7 @@ class OutlineTree extends Tree:
 			var type:String = type_rich.type
 			
 			if member_data == null:
-				MemberData.print_deb("MemberData null in outline - %s" % member_name)
+				MemberData.print_deb(["MemberData null in outline - %s" % member_name])
 				continue
 			
 			var has_issue:=false
@@ -1039,21 +1040,21 @@ class OutlineTree extends Tree:
 			if is_local:
 				var func_obj = MemberData.get_lv_func_obj_from_access_path(access_path, line_index)
 				if not is_instance_valid(func_obj):
-					MemberData.print_deb("NO FUNC FOR LOCAL??")
+					MemberData.print_deb(["NO FUNC FOR LOCAL??"])
 					return
 				if is_arg:
 					member_data = func_obj.arguments.get(member_name)
 				else:
 					member_data = func_obj.local_vars.get(member_name)
 				if member_data == null:
-					MemberData.print_deb("Member data null - local var")
+					MemberData.print_deb(["Member data null - local var"])
 					return
 			else:
 				class_obj = MemberData.get_class_obj_from_access_path(access_path) as ParserClass
 				member_data = class_obj.get_member_data(member_name)
 			
 			if member_data == null:
-				MemberData.print_deb("Member data null - %s" % member_name)
+				MemberData.print_deb(["Member data null - %s" % member_name])
 				return
 			
 			member_type = member_data.get(ParserKeys.MEMBER_TYPE)
@@ -1453,7 +1454,7 @@ class MemberData:
 		function_def_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.FUNCTION_DEFINITION)
 		symbol_color = EditorColors.get_syntax_color(EditorColors.SyntaxColor.SYMBOL)
 	
-	static func print_deb(... msg:Array):
+	static func print_deb(msg:Array):
 		if PRINT_DEBUG:
 			print("::".join(msg))
 	

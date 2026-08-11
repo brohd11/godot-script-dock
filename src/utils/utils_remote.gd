@@ -18,6 +18,7 @@ const UControl = preload("uid://brio73mirr5e6") #! resolve ALibRuntime.Utils.UCo
 const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType
 const UString = preload("uid://cwootkivqiwq1") #! resolve ALibRuntime.Utils.UString
 const UWindow = preload("uid://q2lbynew21er") #! resolve ALibRuntime.Utils.UWindow
+const UVersion = preload("uid://b4f7kxqukmbj2") #! resolve ALibRuntime.Utils.UVersion
 const UClassDetail = preload("uid://gyx3o6jv751x") #! resolve ALibEditor.Utils.UClassDetail
 const CacheHelper = preload("uid://1t7w412oon1j") #! resolve ALibRuntime.Utils.UMisc.CacheHelper
 const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.UProfile.TimeBudget
