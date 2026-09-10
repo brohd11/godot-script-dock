@@ -10,13 +10,15 @@ const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.P
 
 const SettingHelperEditor = preload("uid://c4l4v4eufkmtx") #! resolve ALibEditor.Settings.SettingHelperEditor
 
-const UFile = preload("uid://gs632l1nhxaf") #! resolve ALibRuntime.Utils.UFile
+const UFile = preload("uid://bl33psa06nv1e") #! resolve ALibRuntime.Utils.UFile.Methods
 const UName = preload("uid://e2t8o184os5r") #! resolve ALibRuntime.Utils.UName
-const UResource = preload("uid://72uu8yngsoht") #! resolve ALibRuntime.Utils.UResource
+const UResource = preload("uid://brjrqxh2smivn") #! resolve ALibRuntime.Utils.UResource.Methods
+const UTexture = preload("uid://ddu76iygjkxih") #! resolve ALibRuntime.Utils.UResource.UTexture
 const UGDScript = preload("uid://bqwb564jwff43") #! resolve ALibRuntime.Utils.UGDScript
 const UControl = preload("uid://brio73mirr5e6") #! resolve ALibRuntime.Utils.UControl
 const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType
-const UString = preload("uid://cwootkivqiwq1") #! resolve ALibRuntime.Utils.UString
+const UString = preload("uid://bbk1yedqm7a6a") #! resolve ALibRuntime.Utils.UString.Methods
+const Pr = preload("uid://b7y5tr5s8mgri") #! resolve ALibRuntime.Utils.UString.PrintRich
 const UWindow = preload("uid://q2lbynew21er") #! resolve ALibRuntime.Utils.UWindow
 const UVersion = preload("uid://b4f7kxqukmbj2") #! resolve ALibRuntime.Utils.UVersion
 const UClassDetail = preload("uid://gyx3o6jv751x") #! resolve ALibEditor.Utils.UClassDetail

@@ -15,7 +15,7 @@ const ParserFunc = GDScriptParser.ParserFunc
 const ParserKeys = GDScriptParser.Keys
 
 const UString = UtilsRemote.UString
-const Pr = UString.PrintRich
+const Pr = UtilsRemote.Pr
 
 const PathBar = UtilsRemote.PathBar
 

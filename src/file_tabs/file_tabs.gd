@@ -10,6 +10,7 @@ const TabBarContainer = UtilsRemote.TabBarContainer
 const UFile = UtilsRemote.UFile
 const UName = UtilsRemote.UName
 const UResource = UtilsRemote.UResource
+const UTexture = UtilsRemote.UTexture
 const UWindow = UtilsRemote.UWindow
 
 const EditorIcons = UtilsRemote.EditorIcons
@@ -214,7 +215,7 @@ func _tab_set_icon(tab:int, icon_name:String):
 	var icon_texture = _get_icon(icon_name)
 	if icon_texture is Texture2D:
 		if is_file:
-			icon_texture = UResource.UTexture.resize_texture(icon_texture, int(16 * EditorInterface.get_editor_scale()))
+			icon_texture = UTexture.resize_texture(icon_texture, int(16 * EditorInterface.get_editor_scale()))
 		tab_bar_container.get_tab_bar().set_tab_icon(tab, icon_texture)
 		tab_bar_container.set_tab_meta_value(tab, Keys.TAB_ICON, icon_name)
 
