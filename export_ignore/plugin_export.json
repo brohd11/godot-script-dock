@@ -9,7 +9,8 @@
 				"file_extensions": [],
 				"files": []
 			},
-			"export_folder": "script-outline{{version=script_outline}}/script_outline",
+			"export_name": "script-outline{{version=script_outline}}",
+			"export_folder": "addons/script_outline",
 			"other_transfers": [],
 			"parser_overide_settings": {
 				"parse_cs": {

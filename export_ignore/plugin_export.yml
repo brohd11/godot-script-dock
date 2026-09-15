@@ -6,7 +6,8 @@ exports:
         - "res://addons/script_dock/export_ignore"
       file_extensions: []
       files: []
-    export_folder: "script-dock{{version=script_dock}}/script_dock"
+    export_name: "script-dock{{version=script_dock}}"
+    export_folder: "addons/script_dock"
     other_transfers: []
     parser_overide_settings:
       parse_cs: {}
