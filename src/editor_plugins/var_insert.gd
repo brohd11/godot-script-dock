@@ -7,7 +7,6 @@ const Param = PopupWrapper.ItemParams
 const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
 const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
-const GDScriptParser = EditorGDScriptParser.GDScriptParser
 const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType
 
 const INFER_MENU_PATH = "Infer Type"
