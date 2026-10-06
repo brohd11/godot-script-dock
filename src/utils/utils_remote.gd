@@ -8,7 +8,7 @@ const PluginButton = preload("uid://cwiqk1fttu0sy").PluginButton #! resolve ALib
 const TabBarContainer = preload("uid://b7cxw711vl1jd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
 const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.PathBar
 
-const SettingHelperEditor = preload("uid://c4l4v4eufkmtx") #! resolve ALibEditor.Settings.SettingHelperEditor
+const SettingHelperEditor = preload("uid://dnov6vp7pjnbb") #! resolve SettingHelper.Editor
 
 const UFile = preload("uid://bl33psa06nv1e") #! resolve ALibRuntime.Utils.UFile.Methods
 const UName = preload("uid://e2t8o184os5r") #! resolve ALibRuntime.Utils.UName
@@ -36,5 +36,5 @@ const CollectionSingleton = preload("res://addons/addon_lib/brohd/collections/co
 const RightClickHandler = preload("uid://mmtkf4h8er3m") #! resolve ClickHandlers.RightClickHandler
 const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
-const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve ALibEditor.FileSystem.Component.FSTree
-const FSSmallPopup = preload("uid://1gdu201y6jro") #! resolve ALibEditor.FileSystem.Component.SmallPopup
+const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve EditorFS.Components.FSTree
+const FSSmallPopup = preload("uid://1gdu201y6jro") #! resolve EditorFS.Components.SmallPopup

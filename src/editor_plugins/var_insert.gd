@@ -3,7 +3,8 @@ extends EditorContextMenuPlugin
 const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
 
-const Param = PopupWrapper.ItemParams
+const PopupHelper = UtilR.Nodes.Popups.PathHelper
+const Param = PopupHelper.ParamKeys
 const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
 
 const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
@@ -21,7 +22,7 @@ func _popup_menu(paths: PackedStringArray) -> void:
 	if items.is_empty():
 		return
 	
-	PopupWrapper.create_context_plugin_items(self, script_edit, items, _callback)
+	PopupWrapper.ContextPlugin.create_items(self, script_edit, items, _callback)
 
 
 func get_valid_items(script_editor:CodeEdit) -> Dictionary:

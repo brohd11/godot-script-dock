@@ -1,4 +1,4 @@
-extends "res://addons/addon_lib/brohd/alib_editor/file_system/components/fs_tree.gd" #! ext UtilsRemote.FSTree
+extends "res://addons/addon_lib/editor_filesystem/src/components/fs_tree.gd" #! ext UtilsRemote.FSTree
 
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
@@ -101,17 +101,17 @@ func _custom_right_click_menu(items:Dictionary, selected_path:String, selected_p
 		items["pre"].clear() # place new tab at top, allows clearing above
 		
 		items["pre"][NEW_TAB] = {
-				PopupWrapper.ItemParams.ICON: ["TabContainer"],
-				PopupWrapper.ItemParams.ICON_COLOR: [Color(5,5,5)],
-				PopupWrapper.ItemParams.METADATA: {"selected": selected_path}
+				PopupHelper.ParamKeys.ICON: ["TabContainer"],
+				PopupHelper.ParamKeys.ICON_COLOR: [Color(5,5,5)],
+				PopupHelper.ParamKeys.METADATA: {"selected": selected_path}
 			}
 		for key in copy.keys():
 			items["pre"][key] = copy[key]
 		
 
 func _handle_custom_popup_id(id, popup):
-	var menu_path = PopupWrapper.PopupHelper.parse_menu_path(id, popup)
-	var meta = PopupWrapper.PopupHelper.parse_metadata(id, popup)
+	var menu_path = PopupHelper.parse_menu_path(id, popup)
+	var meta = PopupHelper.parse_metadata(id, popup)
 	var selected = meta.get("selected")
 	match menu_path:
 		NEW_TAB: _on_new_tab_pressed(selected)
