@@ -1,4 +1,4 @@
-extends "res://addons/addon_lib/editor_filesystem/src/components/fs_tree.gd" #! ext UtilsRemote.FSTree
+extends "res://addons/_lib/editor_filesystem/src/components/fs_tree.gd" #! ext UtilsRemote.FSTree
 
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
