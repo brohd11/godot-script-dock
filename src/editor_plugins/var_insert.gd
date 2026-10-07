@@ -3,9 +3,9 @@ extends EditorContextMenuPlugin
 const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
 
-const PopupHelper = UtilR.Nodes.Popups.PathHelper
+const PopupHelper = UtilR.Nodes.PopupMenus.PathHelper
 const Param = PopupHelper.ParamKeys
-const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
+const Options = preload("uid://dxdxq2n3imf4q") #! resolve UtilR.Nodes.PopupMenus.Options
 
 const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
 const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve ALibEditor.Utils.UGDScript.VarInsertType

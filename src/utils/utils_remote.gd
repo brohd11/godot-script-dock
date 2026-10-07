@@ -33,8 +33,8 @@ const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.S
 const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
 const CollectionSingleton = preload("res://addons/_lib/brohd/collections/collection_singleton.gd")
 
-const RightClickHandler = preload("uid://mmtkf4h8er3m") #! resolve ClickHandlers.RightClickHandler
-const Options = preload("uid://c61qxuau2v0pb") #! resolve ALibRuntime.Popups.Options
+const RightClickHandler = preload("uid://cs6pl78crcr0g") #! resolve UtilR.Nodes.PopupMenus.Placer
+const Options = preload("uid://dxdxq2n3imf4q") #! resolve UtilR.Nodes.PopupMenus.Options
 
 const FSTree = preload("uid://b7ydnvf8t32w3") #! resolve EditorFS.Components.FSTree
 const FSSmallPopup = preload("uid://1gdu201y6jro") #! resolve EditorFS.Components.SmallPopup
