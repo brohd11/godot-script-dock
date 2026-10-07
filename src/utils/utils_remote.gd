@@ -25,7 +25,7 @@ const UClassDetail = preload("uid://gyx3o6jv751x") #! resolve ALibEditor.Utils.U
 const CacheHelper = preload("uid://1t7w412oon1j") #! resolve ALibRuntime.Utils.UMisc.CacheHelper
 const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.UProfile.TimeBudget
 
-const LineSubmit = preload("uid://dmilkaqawd510") #! resolve ALibRuntime.Dialog.Handlers.LineSubmit
+const LineSubmit = preload("uid://vtkuh2gtwy1b") #! resolve Dialogs.Handlers.LineSubmit
 
 const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
 const EditorIcons = preload("uid://viocyrti6wce") #! resolve ALibEditor.Singleton.EditorIcons

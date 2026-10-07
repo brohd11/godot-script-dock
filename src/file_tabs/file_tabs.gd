@@ -172,12 +172,13 @@ func _on_tab_rename(tab:int):
 	var tab_bar = tab_bar_container.get_tab_bar()
 	var tab_rect = _get_tab_rect(tab)
 	var line_submit = LineSubmit.new(self, tab_rect, false)
-	var handled = await line_submit.line_submitted
-	if handled == "":
+	var resp:Dialogs.Response = await line_submit.handled
+	if resp.cancelled or resp.payload == "":
 		return
 	
-	tab_bar_container.set_tab_meta_value(tab, Keys.TAB_TITLE, handled)
-	tab_bar.set_tab_title(tab, handled)
+	var new_name = resp.payload
+	tab_bar_container.set_tab_meta_value(tab, Keys.TAB_TITLE, new_name)
+	tab_bar.set_tab_title(tab, new_name)
 	
 	_set_title_mode()
 	update_tabs_data()
@@ -185,16 +186,18 @@ func _on_tab_rename(tab:int):
 func _on_tab_set_custom_icon(tab:int):
 	var tab_rect = _get_tab_rect(tab)
 	var line_submit = LineSubmit.new(self, tab_rect, false)
-	var handled = await line_submit.line_submitted
-	if handled == "":
+	var resp:Dialogs.Response = await line_submit.handled
+	if resp.cancelled or resp.payload == "":
 		return
+	var new_name = resp.payload
+	
 	var editor_thm = EditorInterface.get_editor_theme()
-	if editor_thm.has_icon(handled, &"EditorIcons"):
-		_on_tab_set_icon(tab, handled)
-	elif FileAccess.file_exists(handled):
-		_on_tab_set_icon(tab, handled)
+	if editor_thm.has_icon(new_name, &"EditorIcons"):
+		_on_tab_set_icon(tab, new_name)
+	elif FileAccess.file_exists(new_name):
+		_on_tab_set_icon(tab, new_name)
 	else:
-		printerr("Could not find icon: ", handled)
+		printerr("Could not find icon: ", new_name)
 
 func _tab_get_default_icon(tab_control:Control):
 	if tab_control is ScriptCollection:
