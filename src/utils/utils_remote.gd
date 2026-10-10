@@ -28,7 +28,7 @@ const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.U
 const LineSubmit = preload("uid://vtkuh2gtwy1b") #! resolve Dialogs.Handlers.LineSubmit
 
 const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
-const EditorIcons = preload("uid://viocyrti6wce") #! resolve ALibEditor.Singleton.EditorIcons
+const EditorIcons = preload("uid://viocyrti6wce") #! resolve PluginUI.EditorIcons
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
 const CollectionSingleton = preload("res://addons/_lib/brohd/collections/collection_singleton.gd")
