@@ -4,8 +4,8 @@ const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor
 
 const TreeHelperBase = preload("uid://bm6fl2iu4jew7") #! resolve ALibRuntime.TreeHelperBase
 
-const PluginButton = preload("uid://cwiqk1fttu0sy").PluginButton #! resolve ALibEditor.UIHelpers.Buttons.PluginButton
-const TabBarContainer = preload("uid://b7cxw711vl1jd") #! resolve ALibEditor.UIHelpers.Tab.TabBarContainer
+const PluginButton = preload("uid://redtm8tuamgm") #! resolve UIPlugin.PluginButton
+const TabBarContainer = preload("uid://dhohyyr2xlven") #! resolve UIRuntime.Tabs.TabBarContainer
 const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.PathBar
 
 const SettingHelperEditor = preload("uid://dnov6vp7pjnbb") #! resolve SettingHelper.Editor
@@ -28,7 +28,7 @@ const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.U
 const LineSubmit = preload("uid://vtkuh2gtwy1b") #! resolve Dialogs.Handlers.LineSubmit
 
 const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
-const EditorIcons = preload("uid://viocyrti6wce") #! resolve PluginUI.EditorIcons
+const EditorIcons = preload("uid://viocyrti6wce") #! resolve UIPlugin.EditorIcons
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
 const CollectionSingleton = preload("res://addons/_lib/brohd/collections/collection_singleton.gd")
