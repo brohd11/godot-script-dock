@@ -1,6 +1,8 @@
 #! remote
 
-const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve ALibEditor.Singleton.EditorGDScriptParser
+const TagParser = preload("uid://mjs2johce5hs") #! resolve EditorParser.TagParser
+
+const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve EditorParser.EditorGDScriptParser
 
 const TreeHelperBase = preload("uid://bm6fl2iu4jew7") #! resolve ALibRuntime.TreeHelperBase
 
@@ -27,10 +29,10 @@ const TimeBudget = preload("uid://dq46888jea3a5") #! resolve ALibRuntime.Utils.U
 
 const LineSubmit = preload("uid://vtkuh2gtwy1b") #! resolve Dialogs.Handlers.LineSubmit
 
-const EditorColors = preload("uid://bhb1vgeh8ibjq") #! resolve ALibEditor.Colors
+const EditorColors = preload("uid://cpw0fsrs38esk") #! resolve UtilE.Colors
 const EditorIcons = preload("uid://viocyrti6wce") #! resolve UIPlugin.EditorIcons
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
-const TagParser = preload("uid://gmbyxd0dnujb") #! resolve ALibEditor.Singleton.TagParser
+
 const CollectionSingleton = preload("res://addons/_lib/brohd/collections/collection_singleton.gd")
 
 const RightClickHandler = preload("uid://cs6pl78crcr0g") #! resolve UtilR.Nodes.PopupMenus.Placer
