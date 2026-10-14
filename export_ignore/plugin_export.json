@@ -58,6 +58,6 @@
 		}
 	},
 	"plugin_folder": "ScriptOutline{{version=script_outline}}",
-	"post_script": "res://addons/script_outline/export_ignore/pre_post_export.gd",
-	"pre_script": "res://addons/script_outline/export_ignore/pre_post_export.gd"
+	"post_script": "",
+	"pre_script": ""
 }

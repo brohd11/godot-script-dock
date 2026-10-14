@@ -33,7 +33,7 @@ const EditorColors = preload("uid://cpw0fsrs38esk") #! resolve UtilE.Colors
 const EditorIcons = preload("uid://viocyrti6wce") #! resolve UIPlugin.EditorIcons
 const ScriptListManager = preload("uid://d3o6grkkmk4qk") #! resolve ALibEditor.Singleton.ScriptListManager
 
-const CollectionSingleton = preload("res://addons/_lib/brohd/collections/collection_singleton.gd")
+const CollectionSingleton = preload("res://addons/_lib/brohd/src/collections/collection_singleton.gd")
 
 const RightClickHandler = preload("uid://cs6pl78crcr0g") #! resolve UtilR.Nodes.PopupMenus.Placer
 const Options = preload("uid://dxdxq2n3imf4q") #! resolve UtilR.Nodes.PopupMenus.Options

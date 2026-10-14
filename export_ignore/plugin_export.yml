@@ -35,5 +35,5 @@ options:
     parse_tscn: {}
     use_relative_paths: false
 plugin_folder: "ScriptDock{{version=script_dock}}"
-post_script: "res://addons/script_dock/export_ignore/pre_post_export.gd"
-pre_script: "res://addons/script_dock/export_ignore/pre_post_export.gd"
+post_script: ""
+pre_script: ""
