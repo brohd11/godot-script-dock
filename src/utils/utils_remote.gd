@@ -9,7 +9,7 @@ const TreeHelperBase = preload("uid://bma4204fvtvtx") #! resolve UtilR.Nodes.Tre
 
 const PluginButton = preload("uid://redtm8tuamgm") #! resolve UIPlugin.PluginButton
 const TabBarContainer = preload("uid://dhohyyr2xlven") #! resolve UIRuntime.Tabs.TabBarContainer
-const PathBar = preload("uid://bw2knsytgo0vu") #! resolve ALibRuntime.UICustom.PathBar
+const PathBar = preload("uid://bw2knsytgo0vu") #! resolve UIRuntime.PathBar
 
 const SettingHelperEditor = preload("uid://dnov6vp7pjnbb") #! resolve SettingHelper.Editor
 
