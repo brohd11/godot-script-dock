@@ -62,8 +62,8 @@ script_dock.call_on_ready(script_dock.add_section.bind(&"YourID", your_control))
 
 
 ## Install
-This plugin uses external dependencies packaged with [Plugin Exporter]
-(https://github.com/brohd11/Godot-Plugin-Exporter), download the latest package
+This plugin uses external dependencies packaged with [Package Exporter]
+(https://github.com/brohd11/godot-package-exporter), download the latest package
  from releases, it includes the required dependencies.
 
 You can also use [gdaddon](https://github.com/brohd11/gdaddon) to manage the
