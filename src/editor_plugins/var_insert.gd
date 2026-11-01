@@ -1,4 +1,4 @@
-extends EditorContextMenuPlugin
+extends "res://addons/_lib/popup_wrapper/src/context_menu.gd" #! ext PopupWrapper.ContextMenu
 
 const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
@@ -18,13 +18,13 @@ const PRIORITY = 10
 
 var _var_line_data:= {}
 
-func _popup_menu(paths: PackedStringArray) -> void:
-	var script_edit:CodeEdit = Engine.get_main_loop().root.get_node(paths[0]);
+func _get_menu_options(data) -> void:
+	var script_edit:CodeEdit = PopupWrapper.Slots.code_edit(data)
 	var items:Dictionary = get_valid_items(script_edit)
 	if items.is_empty():
 		return
 	
-	PopupWrapper.ContextPlugin.create_items(self, script_edit, items, _callback)
+	PopupWrapper.ContextPlugin.create_items(self, data, items, _callback)
 
 
 func get_valid_items(script_editor:CodeEdit) -> Dictionary:
@@ -50,7 +50,8 @@ func get_valid_items(script_editor:CodeEdit) -> Dictionary:
 	
 	return options.get_options()
 
-func _callback(script_editor:CodeEdit, menu_path:String) -> void:
+func _callback(data, menu_path:String) -> void:
+	var script_editor:CodeEdit = PopupWrapper.Slots.code_edit(data)
 	if menu_path == INFER_MENU_PATH:
 		_infer_type(script_editor, _var_line_data)
 
