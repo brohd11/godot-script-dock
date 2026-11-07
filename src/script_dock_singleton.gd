@@ -92,7 +92,7 @@ func _ready() -> void:
 	sidebar_container.add_child(right_click_handler)
 	
 	dm_instance_manager = DockManager.InstanceManager.new(initial_plugin, false, true)
-	var dm = dm_instance_manager.new_persistent_dock_manager(sidebar_container, DockManager.Slot.DOCK_SLOT_LEFT_UR)
+	var dm = dm_instance_manager.new_persistent_dock_manager(sidebar_container, EditorPlugin.DOCK_SLOT_LEFT_UR)
 	dm.allow_scene_reload = true
 
 

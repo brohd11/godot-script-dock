@@ -2,7 +2,6 @@ extends VBoxContainer
 
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
-const PluginButton = UtilsRemote.PluginButton
 const RightClickHandler = UtilsRemote.RightClickHandler
 const Options = UtilsRemote.Options
 const UFile = UtilsRemote.UFile
@@ -28,7 +27,6 @@ var _in_script_editor_sidebar:bool = true
 
 var right_click_handler:RightClickHandler
 
-var dock_button:Button
 var dock_manager:DockManager
 
 var editor_side_bar_vsplit_parent:Control
@@ -78,10 +76,6 @@ func _init():
 func _ready() -> void:
 	
 	size_flags_vertical = Control.SIZE_EXPAND_FILL
-
-	dock_button = PluginButton.new().get_button()
-	add_child(dock_button)
-	dock_button.hide.call_deferred()
 
 	EditorNodeRef.call_on_ready.call_deferred(_on_enr_ready)
 
@@ -282,7 +276,7 @@ func _merge_shared_options(options:Options) -> Options:
 	options.add_option(move_message, _move_to_from_sidebar.bind(in_docks), [move_icon])
 
 	if in_docks:
-		options.add_option("DockManager", func():dock_button.pressed.emit(), ["MakeFloating"])
+		options.add_option("DockManager", dock_manager.show_popup, ["MakeFloating"])
 	
 	return options
 
@@ -295,10 +289,7 @@ func _is_in_docks():
 	else:
 		if par_class == "EditorDock":
 			return true
-	var parent_parent = parent.get_parent()
-	if parent_parent is DockManager.PanelWindow:
-		return true
-	return false
+	return is_instance_valid(dock_manager) and dock_manager.is_floating()
 
 func _move_to_from_sidebar(to_sidebar:bool, set_status:bool=true):
 	if set_status:
