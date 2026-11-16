@@ -1,24 +1,12 @@
 export_root: "res://addons/script_dock/export_ignore/exports"
 exports:
   -
-    exclude:
-      directories:
-        - "res://addons/script_dock/export_ignore"
-      file_extensions: []
-      files: []
     export_name: "script-dock{{version=script_dock}}"
     export_folder: "addons/script_dock"
-    other_transfers: []
-    parser_overide_settings:
-      parse_cs: {}
-      parse_gd: {}
-      parse_tres: {}
-      parse_tscn: {}
-    remote_dir: "res://addons/script_dock/src/remote"
     source: "res://addons/script_dock"
+exported_require: ["brohd11/godot-tree-sitter-gd@v1.0.4"]
 options:
   use_tag_in_cfg: true
-  exported_deps: ["brohd11/godot-tree-sitter-gd@v1.0.4"]
   include_import: true
   include_uid: true
   overwrite: true
