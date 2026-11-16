@@ -5,6 +5,7 @@ const Self = preload("res://addons/script_dock/src/file_tabs/script_collection.g
 const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
+#! gdp-strip-cast ScriptListManager
 const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 const RightClickHandler = UtilsRemote.RightClickHandler

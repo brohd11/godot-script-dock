@@ -6,6 +6,7 @@ const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd"
 const UResource = UtilsRemote.UResource
 const UGDScript = UtilsRemote.UGDScript
 
+#! gdp-strip-cast ScriptListManager
 const ScriptListManager = UtilsRemote.ScriptListManager
 
 const RightClickHandler = UtilsRemote.RightClickHandler

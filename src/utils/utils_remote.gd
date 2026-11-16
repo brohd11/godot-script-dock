@@ -1,5 +1,3 @@
-#! remote
-
 const TagParser = preload("uid://mjs2johce5hs") #! resolve EditorParser.TagParser
 
 const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve EditorParser.EditorGDScriptParser

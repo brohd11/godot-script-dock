@@ -16,6 +16,7 @@ const _CACHE_BIN_PATH = "res://.godot/addons/script_dock/script_cache.bin"
 
 #region SingletonAPI
 
+#! gdp-strip-cast PE_STRIP_CAST_SCRIPT
 const PE_STRIP_CAST_SCRIPT = preload("res://addons/script_dock/src/script_dock_singleton.gd")
 
 static func get_singleton_name() -> String:

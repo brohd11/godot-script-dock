@@ -3,6 +3,7 @@ extends VBoxContainer
 const UtilsRemote = ScriptDock.UtilsRemote
 const UtilsLocal = ScriptDock.UtilsLocal
 
+#! gdp-strip-cast ScriptListManager
 const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 
