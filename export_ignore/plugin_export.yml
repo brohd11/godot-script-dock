@@ -4,24 +4,20 @@ exports:
     export_name: "script-dock{{version=script_dock}}"
     export_folder: "addons/script_dock"
     source: "res://addons/script_dock"
-exported_require: ["brohd11/godot-tree-sitter-gd@v1.0.4"]
+exported_require: ["brohd11/godot-gdscript-lsp@v0.3.0"]
 options:
   use_tag_in_cfg: true
   include_import: true
   include_uid: true
   overwrite: true
   parser_settings:
-    backport_target: 100.0
     parse_cs:
       namespace_rename: {}
     parse_gd:
       reduce_access_paths: true
-      backport_string_renames: {}
-      class_rename_ignore: []
-      replace_editor_interface: false
+      class_rename_ignore: [ScriptDock]
     parse_tres: {}
     parse_tscn: {}
-    use_relative_paths: false
 plugin_folder: "ScriptDock{{version=script_dock}}"
 post_script: ""
 pre_script: ""
