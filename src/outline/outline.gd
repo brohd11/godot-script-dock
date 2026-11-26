@@ -746,7 +746,7 @@ class OutlineTree extends Tree:
 		var code_edit = gdscript_parser.get_code_edit_parser().code_edit
 		var line_count = code_edit.get_line_count()
 		
-		var budget = ALibRuntime.Utils.UProfile.TimeBudget.new()
+		var budget = UtilsRemote.TimeBudget.new()
 		while not _infer_queue.is_empty():
 			budget.start_cycle()
 			

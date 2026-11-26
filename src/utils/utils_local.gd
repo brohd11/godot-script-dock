@@ -3,7 +3,7 @@ const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd"
 const Options = UtilsRemote.Options
 
 const ScriptListManager = UtilsRemote.ScriptListManager
-const UGDScript = UtilsRemote.UGDScript
+const ReadGd = UtilsRemote.ReadGd
 const EditorColors = UtilsRemote.EditorColors
 
 const CacheHelper = UtilsRemote.CacheHelper
@@ -32,7 +32,7 @@ static func get_file_data(file_path:String, script_data_cache:Dictionary):
 	
 	if file_path.get_extension() == "gd":
 		if not data.has(&"is_tool"):
-			data[&"is_tool"] = UGDScript.FileRead.get_is_tool(file_path)
+			data[&"is_tool"] = ReadGd.get_is_tool(file_path)
 		if data.get(&"is_tool", false):
 			data[ItemKeys.ICON_COLOR] = EditorColors.get_tool_script_color()
 	

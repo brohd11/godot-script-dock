@@ -4,7 +4,6 @@ const UtilsLocal = preload("res://addons/script_dock/src/utils/utils_local.gd")
 const UtilsRemote = preload("res://addons/script_dock/src/utils/utils_remote.gd")
 
 const UResource = UtilsRemote.UResource
-const UGDScript = UtilsRemote.UGDScript
 
 #! gdp-strip-cast ScriptListManager
 const ScriptListManager = UtilsRemote.ScriptListManager
@@ -15,7 +14,7 @@ const Options = UtilsRemote.Options
 const EditorColors = UtilsRemote.EditorColors
 const CacheHelper = UtilsRemote.CacheHelper
 
-const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
+const GitCheck = ScriptDock.GitCheck
 
 # git colour/icons. Can keep the tree agnostic if commented as such
 #const GitDataDraw = UtilsRemote.GitDataDraw

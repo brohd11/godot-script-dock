@@ -7,7 +7,7 @@ const UtilsLocal = ScriptDock.UtilsLocal
 const ScriptListManager = UtilsRemote.ScriptListManager
 const SLKeys = ScriptListManager.Keys
 
-const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
+const GitCheck = ScriptDock.GitCheck
 #const GitDataDraw = GitService.GitDataDraw
 var git_icon_helper # :GitDataDraw.GitItemHelper
 

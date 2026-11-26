@@ -14,7 +14,6 @@ const Options = UtilsRemote.Options
 const UFile = UtilsRemote.UFile
 const UName = UtilsRemote.UName
 const UResource = UtilsRemote.UResource
-const UGDScript = UtilsRemote.UGDScript
 
 const CollectionSingleton = UtilsRemote.CollectionSingleton
 const CollectionManager = CollectionSingleton.CollectionManager
@@ -25,7 +24,7 @@ const CacheHelper = UtilsRemote.CacheHelper
 const FSTree = UtilsRemote.FSTree
 const ItemKeys = FSTree.ItemKeys
 
-const GitCheck = preload("uid://60nis3tknes6").GitCheck #! resolve ScriptDock.GitCheck
+const GitCheck = ScriptDock.GitCheck
 #const GitDataDraw = GitService.GitDataDraw
 var git_icon_overlay# :GitDataDraw.GitItemHelper
 

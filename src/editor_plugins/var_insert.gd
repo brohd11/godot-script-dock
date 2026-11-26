@@ -3,14 +3,14 @@ extends "res://addons/_lib/popup_wrapper/src/context_menu.gd" #! ext PopupWrappe
 const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
 
-const PopupHelper = preload("uid://ba5x2r7gyvmej") #! resolve UtilR.Nodes.PopupMenus.PathHelper
+const PopupHelper = UtilR.Nodes.PopupMenus.PathHelper
 const Param = PopupHelper.ParamKeys
-const Options = preload("uid://dxdxq2n3imf4q") #! resolve UtilR.Nodes.PopupMenus.Options
+const Options = UtilR.Nodes.PopupMenus.Options
 
-const VarInsertType = preload("uid://ci11vn1timw1r") #! resolve EditorParser.Other.VarInsertType
-const EditorGDScriptParser = preload("uid://t2dewmuth0sy") #! resolve EditorParser.EditorGDScriptParser
-const CheckInstance = preload("uid://cnx1roduh82r") #! resolve Singletons.CheckInstance
-const Selection = preload("uid://de5q4pmhswbhb") #! resolve UtilR.Nodes.CodeEdits.Selection
+const VarInsertType = EditorParser.Other.VarInsertType
+const EditorGDScriptParser = EditorParser.EditorGDScriptParser
+const CheckInstance = Singletons.CheckInstance
+const Selection = UtilR.Nodes.CodeEdits.Selection
 
 const INFER_MENU_PATH = "Infer Type"
 
