@@ -86,7 +86,8 @@ func _build_list():
 		if script_idx == selected_idx:
 			item_list.select(idx)
 		
-		git_icon_helper.set_item_fg_color(idx, data.get(SLKeys.TOOLTIP))
+		if is_instance_valid(git_icon_helper): # null without a git service
+			git_icon_helper.set_item_fg_color(idx, data.get(SLKeys.TOOLTIP))
 	
 	item_list.queue_redraw()
 

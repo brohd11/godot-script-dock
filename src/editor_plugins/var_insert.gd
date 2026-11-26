@@ -1,4 +1,5 @@
 extends "res://addons/_lib/popup_wrapper/src/context_menu.gd" #! ext PopupWrapper.ContextMenu
+#! gdp-strip-cast GDScriptParser, CodeEditParser
 
 const SLOT = CONTEXT_SLOT_SCRIPT_EDITOR_CODE
 
@@ -15,6 +16,7 @@ const Selection = UtilR.Nodes.CodeEdits.Selection
 const INFER_MENU_PATH = "Infer Type"
 
 const PRIORITY = 10
+const CodeEditParser = GDScriptParser.CodeEditParser
 
 var _var_line_data:= {}
 
@@ -34,7 +36,7 @@ func get_valid_items(script_editor:CodeEdit) -> Dictionary:
 		return {}
 	
 	var parser:GDScriptParser = EditorGDScriptParser.get_parser()
-	var code_edit_parser:GDScriptParser.CodeEditParser = parser.get_code_edit_parser()
+	var code_edit_parser:CodeEditParser = parser.get_code_edit_parser()
 	var untyped_line_data:Dictionary = {}
 	var line_idxes:Array = line_data.keys()
 	for i:int in line_idxes:

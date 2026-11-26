@@ -1,4 +1,5 @@
 extends MarginContainer
+#! gdp-strip-cast GDScriptParser, ParserClass, ParserFunc
 
 const PLUGIN_EXPORTED = false
 const PRINT_DEBUG = PLUGIN_EXPORTED and false
@@ -1742,7 +1743,7 @@ class MemberData:
 			return "null"
 		
 		var current_class = current_parser.get_class_at_line(line)
-		var class_obj = current_parser.get_class_object(current_class) as GDScriptParser.ParserClass
+		var class_obj = current_parser.get_class_object(current_class) as ParserClass
 		if not is_instance_valid(class_obj):
 			return "null"
 		
