@@ -210,7 +210,8 @@ func _flush_section(section:SectionSplit) -> void:
 func _apply_section(section:SectionSplit) -> void:
 	var id = String(section.id)
 	var split = _get_section_split_data(id)
-	section.collapsed_state = bool(split.get(Keys.SECTION_COLLAPSED, false))
+	# no saved entry yet: only Files starts open, so first-run docks and late sections (git_view) arrive folded
+	section.collapsed_state = bool(split.get(Keys.SECTION_COLLAPSED, section.id != SECTION_FILE_TABS))
 	section.offset_pref = int(split.get(Keys.SECTION_SPLIT_OFFSET, 0))
 
 	var content = section.get_content()
